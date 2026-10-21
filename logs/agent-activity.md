@@ -29,4 +29,10 @@
 - 产物：`AGENTS.md` 项目参数与玩法定案、`CONTEXT.md` 术语表、REQ-001/002、`.scratch/mosaic-core/spec.md` 与 8 张 tickets、ADR-0001/0002/0003。
 - 验证：文档相对链接检查通过；术语表与 spec/REQ 用词一致；代码未实施，无构建/测试可跑。
 - 剩余风险：球间碰撞在低端真机的手感与性能未验证；30 关美术产能与量化效果待 demo1 校准；软著、广告位、平台资质尚未启动。
-- 下一步：用户确认 REQ-001 + spec 后，从 Ticket 01（脚手架/构建/adapters）开始实施；用户侧执行 `git config core.hooksPath scripts/git-hooks` 与 push。
+- 下一步：用户确认 REQ-001 + spec 后，从 Ticket 01（脚手架/构建/adapters）开始实施。
+
+## 2026-10-21 · Git 操作授权调整
+
+- 用户指令「Git 你也自行操作」：agent 接管 `git add` / `commit` / `push` 与仓库级 `git config`，不再留给用户执行。
+- 已执行 `git config --local core.hooksPath scripts/git-hooks`，pre-commit 自动构建生效（当前 apps/game 无 build script，hook 跳过）。
+- 破坏性操作边界保留：`push --force`、`reset --hard`、删除分支/远程分支仍需先确认。根 `AGENTS.md` 与 README 已同步。

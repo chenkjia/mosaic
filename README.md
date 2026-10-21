@@ -51,5 +51,5 @@ mosaic/
 
 ## 人工步骤
 
-- 新环境启用 pre-commit 构建：`git config core.hooksPath scripts/git-hooks`（由用户执行）。
+- pre-commit 构建已由 agent 配置 `core.hooksPath=scripts/git-hooks`；新克隆仓库需重新执行一次。
 - 真机核验、平台提审、广告位配置由用户执行，agent 只产出走查清单。
