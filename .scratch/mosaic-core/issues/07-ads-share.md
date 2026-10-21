@@ -1,6 +1,6 @@
 # 07 广告与分享接入
 
-Status: todo
+Status: done
 依赖：01、04
 关联：REQ-001（商业化）、REQ-002
 
@@ -16,3 +16,10 @@ Status: todo
 - 分享调用平台 `share`，带标题/封面/query；V1 不发奖励、无邀请码。
 - 广告与分享代码只在 platform adapter 内；业务层不出现 `wx`/`tt`。
 - 真机走查清单产出（广告三通道、分享、复活灰态）。
+
+## 实施记录
+
+- 产物：`platform/minigame.js`（SDK 广告、分享、模拟广告回退）、`config/ads.js`（`AD_UNIT_ID` / 分点位 `AD_UNIT_IDS` 配置源，entries 注入）、play/home 的广告与分享交互、`docs/verify/device-checklist.md`。
+- 决定：广告位为空时走 3 秒模拟广告；每点位可独立配置，缺省回退总 ID；分享封面由 adapter 自动补 `pkg-game/` 前缀；分享 V1 不发奖励；业务层只调用 `platform.showRewardedAd` / `platform.share`。
+- 验证：web 三通道模拟广告全部发奖正确（额外球、复活、双倍）；复活二次失败按钮置灰；`d.share()` 在无 `navigator.share` 的 Chromium 返回 false 且 UI 有回退提示；`verify-dist` 确认微信/抖音包内无 `wx.`/`tt.` 泄漏。
+- 遗留：真实广告位与平台分享卡片未在真机执行，清单第 4、5 节交用户。

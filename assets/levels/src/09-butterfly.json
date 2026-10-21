@@ -1,0 +1,29 @@
+{
+  "id": 9,
+  "name": "butterfly",
+  "title": "蝴蝶",
+  "theme": "animals",
+  "size": [
+    21,
+    28
+  ],
+  "ball": {
+    "count": 2,
+    "speed": 608
+  },
+  "obstacles": [],
+  "rewards": [
+    [
+      4,
+      10
+    ],
+    [
+      16,
+      10
+    ],
+    [
+      10,
+      20
+    ]
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "id": 4,
+  "name": "fox",
+  "title": "狐狸",
+  "theme": "animals",
+  "size": [
+    21,
+    28
+  ],
+  "ball": {
+    "count": 1,
+    "speed": 578
+  },
+  "obstacles": [],
+  "rewards": [
+    [
+      9,
+      21
+    ],
+    [
+      10,
+      21
+    ],
+    [
+      11,
+      21
+    ]
+  ]
+}

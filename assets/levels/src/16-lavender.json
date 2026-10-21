@@ -1,0 +1,29 @@
+{
+  "id": 16,
+  "name": "lavender",
+  "title": "薰衣草",
+  "theme": "flowers",
+  "size": [
+    21,
+    28
+  ],
+  "ball": {
+    "count": 2,
+    "speed": 650
+  },
+  "obstacles": [],
+  "rewards": [
+    [
+      5,
+      5
+    ],
+    [
+      10,
+      6
+    ],
+    [
+      15,
+      7
+    ]
+  ]
+}

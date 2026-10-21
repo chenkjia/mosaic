@@ -1,8 +1,16 @@
 import { applyViewTransformTo, clientToDesign, designSizeOf } from './view.js';
 import { createKVStorage } from './storage.js';
 
-export function createMinigamePlatform(api) {
+const DEFAULT_SIMULATED_AD_MS = 3000;
+
+export function createMinigamePlatform(api, options) {
   if (!api) throw new Error('[platform] 小游戏 API 不可用');
+  const opts = options || {};
+  const adUnitId = opts.adUnitId || '';
+  const adUnitIds = opts.adUnitIds || null;
+  const simulatedAdMs = Number.isFinite(opts.simulatedAdMs)
+    ? Math.max(0, opts.simulatedAdMs)
+    : DEFAULT_SIMULATED_AD_MS;
   const sys = api.getSystemInfoSync ? api.getSystemInfoSync() : {};
   if (!sys.screenWidth || !sys.screenHeight) {
     throw new Error('[platform] getSystemInfoSync 缺少 screenWidth/screenHeight');
@@ -79,16 +87,122 @@ export function createMinigamePlatform(api) {
   }
 
   function share(payload) {
-    if (typeof api.shareAppMessage === 'function') {
-      api.shareAppMessage(payload || {});
-      return true;
+    if (typeof api.shareAppMessage !== 'function') return false;
+    const data = Object.assign({}, payload || {});
+    // 主包只含 boot/loading，游戏资源都在分包内，分享封面必须带分包前缀。
+    if (typeof data.imageUrl === 'string' && data.imageUrl.indexOf('assets/') === 0) {
+      data.imageUrl = 'pkg-game/' + data.imageUrl;
+    }
+    api.shareAppMessage(data);
+    return true;
+  }
+
+  const adCache = new Map();
+
+  function unitFor(placement) {
+    return (adUnitIds && adUnitIds[placement]) || adUnitId;
+  }
+
+  function sdkAvailable() {
+    if (typeof api.createRewardedVideoAd !== 'function') return false;
+    if (adUnitId) return true;
+    if (!adUnitIds) return false;
+    for (const key of Object.keys(adUnitIds)) {
+      if (adUnitIds[key]) return true;
     }
     return false;
   }
 
-  // 广告在 Ticket 07 落地；先保留 seam，避免调用方做平台分支。
-  function showRewardedAd() {
-    return Promise.resolve(false);
+  function adMode() {
+    return sdkAvailable() ? 'sdk' : 'simulated';
+  }
+
+  function getAd(unit) {
+    if (adCache.has(unit)) return adCache.get(unit);
+    const ad = api.createRewardedVideoAd({ adUnitId: unit });
+    adCache.set(unit, ad);
+    return ad;
+  }
+
+  function playSdkAd(unit) {
+    return new Promise((resolve) => {
+      let ad = null;
+      try {
+        ad = getAd(unit);
+      } catch {
+        resolve(false);
+        return;
+      }
+      if (!ad) {
+        resolve(false);
+        return;
+      }
+      let settled = false;
+      function finish(value) {
+        if (settled) return;
+        settled = true;
+        if (typeof ad.offClose === 'function') ad.offClose(onClose);
+        if (typeof ad.offError === 'function') ad.offError(onError);
+        resolve(value);
+      }
+      function onClose(res) {
+        // 旧基础库 onClose 不传 res，按完整观看处理。
+        finish(!res || res.isEnded !== false);
+      }
+      function onError() {
+        finish(false);
+      }
+      function retryLoad() {
+        if (typeof ad.load !== 'function') {
+          finish(false);
+          return;
+        }
+        try {
+          Promise.resolve(ad.load()).then(() => ad.show()).catch(onError);
+        } catch {
+          onError();
+        }
+      }
+      if (typeof ad.onClose === 'function') ad.onClose(onClose);
+      if (typeof ad.onError === 'function') ad.onError(onError);
+      try {
+        const shown = ad.show();
+        if (shown && typeof shown.catch === 'function') shown.catch(retryLoad);
+      } catch {
+        retryLoad();
+      }
+    });
+  }
+
+  function simulateAd() {
+    if (simulatedAdMs <= 0) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      setTimeout(() => resolve(true), simulatedAdMs);
+    });
+  }
+
+  function showRewardedAd(placement) {
+    const unit = unitFor(placement);
+    if (!unit || typeof api.createRewardedVideoAd !== 'function') return simulateAd();
+    return playSdkAd(unit);
+  }
+
+  // 微信小游戏前两次离屏 createCanvas 可能返回上屏主画布，连续取到独立画布为止。
+  function createCanvas() {
+    if (typeof api.createCanvas !== 'function') return null;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      let surface = null;
+      try {
+        surface = api.createCanvas();
+      } catch {
+        return null;
+      }
+      if (!surface || surface === canvas) continue;
+      surface.width = 1;
+      surface.height = 1;
+      return surface;
+    }
+    return null;
   }
 
   function createAudio(src, loop) {
@@ -116,6 +230,10 @@ export function createMinigamePlatform(api) {
     if (typeof api.onTouchStart === 'function') api.onTouchStart(emit('start'));
     if (typeof api.onTouchMove === 'function') api.onTouchMove(emit('move'));
     if (typeof api.onTouchEnd === 'function') api.onTouchEnd(emit('end'));
+  }
+
+  function debugInstall() {
+    // 真机不挂调试探针，避免提审产物暴露内部状态。
   }
 
   function onHide(handler) {
@@ -149,6 +267,9 @@ export function createMinigamePlatform(api) {
     storage,
     share,
     showRewardedAd,
+    adMode,
+    createCanvas,
+    debugInstall,
     audio: { create: createAudio },
     onPointer,
     onHide,

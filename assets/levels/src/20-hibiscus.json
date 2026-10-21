@@ -1,0 +1,29 @@
+{
+  "id": 20,
+  "name": "hibiscus",
+  "title": "木槿",
+  "theme": "flowers",
+  "size": [
+    21,
+    28
+  ],
+  "ball": {
+    "count": 2,
+    "speed": 674
+  },
+  "obstacles": [],
+  "rewards": [
+    [
+      9,
+      9
+    ],
+    [
+      10,
+      10
+    ],
+    [
+      11,
+      11
+    ]
+  ]
+}

@@ -7,10 +7,13 @@ import { designSizeOf } from '../src/platform/view.js';
 
 function makeApi() {
   const canvas = { width: 0, height: 0, getContext: () => ({}) };
+  const offscreen = { width: 0, height: 0, getContext: () => ({}) };
   const kv = new Map();
   const listeners = {};
+  let canvasCalls = 0;
   return {
     canvas,
+    offscreen,
     listeners,
     getSystemInfoSync: () => ({
       screenWidth: 375,
@@ -18,7 +21,10 @@ function makeApi() {
       pixelRatio: 2,
       safeArea: { top: 20, bottom: 647 },
     }),
-    createCanvas: () => canvas,
+    createCanvas: () => {
+      canvasCalls += 1;
+      return canvasCalls === 1 ? canvas : offscreen;
+    },
     createImage: () => {
       const img = {};
       Object.defineProperty(img, 'src', {
@@ -51,7 +57,7 @@ function makeApi() {
 
 test('小游戏 adapter 暴露全部 seam 且坐标/存储/分包可用', async () => {
   const api = makeApi();
-  const platform = createMinigamePlatform(api);
+  const platform = createMinigamePlatform(api, { simulatedAdMs: 0 });
   assertPlatformAdapter(platform);
 
   const sys = platform.getSystemInfo();
@@ -82,7 +88,11 @@ test('小游戏 adapter 暴露全部 seam 且坐标/存储/分包可用', async 
   assert.equal(pointed.x, 375);
   assert.equal(pointed.y, 667);
 
-  assert.equal(await platform.showRewardedAd('revive'), false);
+  assert.equal(platform.adMode(), 'simulated');
+  assert.equal(await platform.showRewardedAd('revive'), true);
+  const offscreen = platform.createCanvas();
+  assert.ok(offscreen);
+  assert.notEqual(offscreen, canvas);
   const audio = platform.audio.create('a.mp3', true);
   assert.equal(typeof audio.play, 'function');
 });

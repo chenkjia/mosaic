@@ -1,5 +1,13 @@
 {
-  "name": "shared",
+  "name": "@mosaic/shared",
   "private": true,
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Mosaic 共享规则核：确定性物理、关卡与存档。",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
 }

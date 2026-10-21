@@ -1,6 +1,6 @@
 # REQ-001 Mosaic 核心玩法 V1
 
-状态：设计已确认（2026-10-21，grilling Q1–Q27，用户回复「确认；全按推荐」）；代码未实施。
+状态：V1 已实现（2026-10-21），数据层、三端构建与 web 浏览器流程通过；真机走查待用户执行。验证报告见 [`docs/verify/REQ-001-verification.md`](../verify/REQ-001-verification.md)，真机清单见 [`docs/verify/device-checklist.md`](../verify/device-checklist.md)。
 
 ## 范围
 

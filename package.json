@@ -3,5 +3,13 @@
   "private": true,
   "version": "0.0.0",
   "packageManager": "pnpm@10.12.1",
-  "description": "Mosaic —— 2D 伪 3D 打砖块小游戏（web / 微信 / 抖音）"
+  "description": "Mosaic —— 2D 伪 3D 打砖块小游戏（web / 微信 / 抖音）",
+  "type": "module",
+  "scripts": {
+    "test": "node --test packages/shared/test/*.test.mjs apps/game/test/*.test.mjs",
+    "build": "corepack pnpm --filter ./apps/game run build",
+    "levels:generate": "node scripts/generate-level-art.js && node scripts/level-from-png.js && node scripts/validate-levels.js",
+    "levels:validate": "node scripts/validate-levels.js",
+    "verify:dist": "node scripts/verify-dist.mjs"
+  }
 }

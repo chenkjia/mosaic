@@ -1,0 +1,29 @@
+{
+  "id": 17,
+  "name": "cherry",
+  "title": "樱花",
+  "theme": "flowers",
+  "size": [
+    21,
+    28
+  ],
+  "ball": {
+    "count": 2,
+    "speed": 656
+  },
+  "obstacles": [],
+  "rewards": [
+    [
+      5,
+      14
+    ],
+    [
+      12,
+      10
+    ],
+    [
+      17,
+      17
+    ]
+  ]
+}

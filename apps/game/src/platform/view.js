@@ -32,6 +32,8 @@ export function designSizeOf(canvas, rawInsets) {
     w: DESIGN_WIDTH,
     h: v.designH,
     mode: v.mode,
+    scale: v.scale,
+    offsetX: v.offsetX,
     bleed,
     safeTop: insets.top / v.scale,
     safeBottom: insets.bottom / v.scale,

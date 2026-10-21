@@ -1,6 +1,6 @@
 # 06 技能、金币与本地存档
 
-Status: todo
+Status: done
 依赖：03、04
 关联：REQ-001（技能、金币、存档）
 
@@ -16,3 +16,9 @@ Status: todo
 - 过关 +20 金币；双倍金币走广告点位。
 - 存档键 `mosaic.save.v1`：往返一致；损坏/缺字段降级默认档；读写收口单点。
 - 启动从最高关继续，无星级、无关卡选择页。
+
+## 实施记录
+
+- 产物：`game/saveStore.js`（唯一读写点）、`game/audio.js`（V1 no-op 接口）、`ui/skillBar.js`、`game/scene/home.js` 扩容入口、shared 的 `expandSlot` / 技能/掉落规则。
+- 决定：存档结构 `{version,highestLevel,coins,slotCapacity,sound,music}`；扩容 200/500，满 4 槽不再扣费；结算金币 = 20 + 局内金币，先落盘再展示结果；音效/音乐开关持久化但 V1 无音频资源。
+- 验证：浏览器 1000 金币连续扩容 → 800/3 槽 → 300/4 槽 → 第三次无变化；localStorage 内容随之更新；失败重开、过关最高关推进、金币结算均通过；25 项 shared 测试覆盖扩容与存档损坏降级。

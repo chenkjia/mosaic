@@ -57,3 +57,36 @@
 - 踩坑 2：`CLEARED · 0%` 使用白色在浅色 HUD 上不可见 → 改深紫；障碍砖原本放在爱心外呈漂浮块 → 移入爱心内部。
 - 踩坑 3：实时视口下右上 badge 压住 HUD，底部提示在浅底上不可见 → 实时诊断移入画布底部留白（design y=1248），提示改深紫胶囊底。
 - 下一步：用户确认视觉 → 冻结 demo1 → Ticket 03 共享确定性物理。
+
+## 2026-10-21 · REQ-001 / Ticket 03 共享确定性物理与规则核
+
+- Status：Ticket 03 done。
+- 产物：`packages/shared/src/{constants,level,palette,physics,rng,save,index}.js`；`packages/shared/test/{physics,level,save}.test.mjs`（25 项）。
+- 关键决定：固定步长 1/120s、单帧最多 8 步；xorshift32 显式种子；球-球等质量弹性碰撞 + 位置分离；障碍不入清除率分母；四技能同类刷新、异类共存；存档校验与降级收口 shared。
+- 验证：同种子同输入 600 步逐帧一致；球-砖/墙/挡板/球球、8 球上限、三色球、掉落、扩容、存档损坏全部有断言；所有输出坐标有限。
+- 剩余风险：红/绿球规则可构造但无玩法产出入口，登记为待确认设计缺口，未擅自改 spec。
+
+## 2026-10-21 · REQ-001 / Ticket 04–05 局内场景与 30 关管线
+
+- Status：Ticket 04、05 done。
+- 产物：`gfx/`（宝石砖、bitmap-cache、粒子）、`ui/`（主题、按钮、弹层、toast、HUD、技能槽）、`game/`（布局、存档、音频、home/play 场景）；`scripts/generate-level-art.js`、`level-from-png.js`、`validate-levels.js`、`assets/levels/`、`apps/game/src/data/levels.json`。
+- 关键决定：`play.draw()` 内驱动 `tick(now)`；静态砖块单张离屏 canvas 复用，键 `levelId|brickVersion|scale`；球/掉落/粒子/激光为动态层；结算倒计时 6.5s、切后台取消；关卡 JSON 由 esbuild import，无运行时 fetch。
+- 验证：30 关校验通过（animals/flowers/scenery 各 10，破坏砖 6674，palette ≤ 16，球速 560→734）；渲染布局在 1334/1400/1624/1900 高度坐标合法；浏览器完成主页 → 预开局 → 发球 → 失败 → 复活 → 结算 → 双倍 → 下一关 → 暂停。
+- 踩坑：draw 只渲染不 tick 会让 sim 停在 ready；微信首几次 `createCanvas` 可能返回主画布；截图坐标不是设计坐标。均已回写 `apps/game/AGENTS.md`。
+
+## 2026-10-21 · REQ-001 / Ticket 06–07 技能经济存档、广告与分享
+
+- Status：Ticket 06、07 done（真实广告与平台分享待真机）。
+- 产物：`game/saveStore.js`（唯一读写点）、`game/audio.js`（V1 no-op）、`ui/skillBar.js`、主页扩容入口；`platform/minigame.js` 的 SDK 广告/分享/模拟回退；`config/ads.js` 由微信/抖音 entries 注入 `AD_UNIT_ID` / `AD_UNIT_IDS`。
+- 关键决定：存档 `mosaic.save.v1` 含最高关/金币/槽容量/音效/音乐；扩容 200/500；结算金币 = 20 + 局内金币；广告位为空走 3 秒模拟广告；分享封面自动补 `pkg-game/` 前缀，V1 不发奖励。
+- 验证：浏览器 1000 金币 → 800/3 槽 → 300/4 槽 → 满槽不再扣费；三处模拟广告发奖正确；复活二次失败置灰；分享无 `navigator.share` 时返回 false 并提示；产物无平台全局泄漏。
+- 剩余风险：真实广告位、平台分享卡片、广告切后台回前台行为未真机验证。
+
+## 2026-10-21 · REQ-001 / Ticket 08 三端验证、发布材料与收尾
+
+- Status：Ticket 08 done（agent 侧产物；真机走查待用户）。
+- 产物：`scripts/verify-dist.mjs`、`docs/verify/REQ-001-verification.md`、`docs/verify/device-checklist.md`；README、REQ-001/002 状态、tickets 03–08、根/游戏端 AGENTS 同步更新。
+- 验证：42/42 测试通过；三端构建 web 0.44MB、微信/抖音主包 0.02MB + 分包 0.42MB；`verify:dist` 通过（探针仅 web、版本 0.1.0、分包字段与竖屏正确）；浏览器全流程无 console error。
+- 关键修复：结算自动倒计时改用真实 rAF 时间并在切后台取消；bitmap-cache 复用单张离屏 canvas；广告位配置从 adapter 硬编码改为 `config/ads.js` 注入。
+- 剩余风险：微信/抖音真机与低端机性能未验证；真实激励视频三通道与分享卡片未验；关卡美术辨识度未人工走查；软著材料未产出；红/绿球缺少玩家可见的产出入口，需用户确认来源后再改 spec。
+- 下一步：用户按 `docs/verify/device-checklist.md` 执行双平台真机走查并回报；确认红/绿球产出方式；配置真实广告位；推进 REQ-002 软著与上线资质。

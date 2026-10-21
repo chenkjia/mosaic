@@ -1,0 +1,29 @@
+{
+  "id": 14,
+  "name": "rose",
+  "title": "玫瑰",
+  "theme": "flowers",
+  "size": [
+    21,
+    28
+  ],
+  "ball": {
+    "count": 2,
+    "speed": 638
+  },
+  "obstacles": [],
+  "rewards": [
+    [
+      7,
+      7
+    ],
+    [
+      13,
+      11
+    ],
+    [
+      10,
+      14
+    ]
+  ]
+}

@@ -9,6 +9,10 @@ importers:
   .: {}
 
   apps/game:
+    dependencies:
+      '@mosaic/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
     devDependencies:
       esbuild:
         specifier: 0.28.2

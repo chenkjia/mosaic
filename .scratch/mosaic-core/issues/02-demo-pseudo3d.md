@@ -1,6 +1,6 @@
 # 02 demo1 伪 3D 宝石砖块复刻页
 
-Status: in_progress
+Status: done
 依赖：无
 关联：REQ-001（视觉）、ADR-0002
 

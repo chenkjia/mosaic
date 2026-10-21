@@ -50,3 +50,8 @@
 - 本地存档损坏 → 统一封装存档模块：读写收口单点、损坏降级重置、异常恢复。
 - 大量零散单图推高包体与开销 → 图集合并压缩，大图延迟按需加载。
 - `pnpm install` 提示 `Ignored build scripts: esbuild` → pnpm 10 默认拦截依赖构建脚本；esbuild 0.28.2 的平台二进制由 optionalDependencies 提供，构建不受影响。换平台或版本后若报找不到二进制，再执行 `pnpm approve-builds` 允许 esbuild 的构建脚本。
+- 局内画面能渲染但 sim 永远停在 `ready` / 浏览器自动化点击后无进展 → 场景绘制与推进脱节。**根因**：`draw()` 只渲染，没有调用 `tick(now)`，而 rAF 只挂在外层 `frame` 上。**方案**：固定由 `play.draw()` 驱动 `tick`，调试快照只读不渲染。**验证**：点击发球后 `getSnapshot().time` 增长、`percent` 变化。
+- 每次击砖都新建离屏 canvas / 真机首屏偶发被覆盖 → 微信 `createCanvas` 前几次可能返回主画布，且逐次创建成本高。**方案**：bitmap-cache 只创建一张离屏 surface 反复复用；adapter 的 `createCanvas` 连续取到非主画布为止。**验证**：连续击砖 `cacheBuilds` 增长但离屏对象不增长；真机画面不再被缓存层覆盖。
+- 浏览器自动化点错按钮 / 命中坐标与截图不符 → 截图是物理像素，不是 750 设计坐标。**方案**：用 `getRect` 系列（`hitModal` / `getRects`）拿设计坐标后再点中心，不靠截图目测。**验证**：点击后 `getSnapshot().modal` / `levelId` 与预期一致。
+- 广告三通道在真机一直走模拟广告 → entries 没有把广告位 ID 传给 adapter。**方案**：在 `src/config/ads.js` 填 `AD_UNIT_ID` / `AD_UNIT_IDS`，由 entries 注入；留空即模拟广告。**验证**：`platform.adMode()` 返回 `sdk`，真机拉起平台广告。
+- 产物混入调试探针或平台全局 → `entries/pkg-game.js` 引用了 web/平台模块。**方案**：分包入口只导出 `createGameApp`；探针只在 web adapter 安装。**验证**：`corepack pnpm verify:dist` 通过（微信/抖音零探针、无 `wx.`/`tt.`/`document.`/`window.`）。

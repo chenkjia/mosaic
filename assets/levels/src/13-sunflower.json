@@ -1,0 +1,29 @@
+{
+  "id": 13,
+  "name": "sunflower",
+  "title": "向日葵",
+  "theme": "flowers",
+  "size": [
+    21,
+    28
+  ],
+  "ball": {
+    "count": 2,
+    "speed": 632
+  },
+  "obstacles": [],
+  "rewards": [
+    [
+      9,
+      9
+    ],
+    [
+      11,
+      10
+    ],
+    [
+      10,
+      11
+    ]
+  ]
+}

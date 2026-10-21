@@ -1,0 +1,29 @@
+{
+  "id": 19,
+  "name": "bluebell",
+  "title": "风铃草",
+  "theme": "flowers",
+  "size": [
+    21,
+    28
+  ],
+  "ball": {
+    "count": 2,
+    "speed": 668
+  },
+  "obstacles": [],
+  "rewards": [
+    [
+      10,
+      12
+    ],
+    [
+      5,
+      12
+    ],
+    [
+      15,
+      10
+    ]
+  ]
+}

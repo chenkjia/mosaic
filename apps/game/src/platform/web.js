@@ -4,6 +4,10 @@ import { createKVStorage } from './storage.js';
 export function createWebPlatform() {
   const canvas = document.getElementById('game') || document.createElement('canvas');
   if (!canvas.parentNode) document.body.appendChild(canvas);
+  const params = new URLSearchParams(window.location.search);
+  const simulatedAdMs = params.has('adMs')
+    ? Math.max(0, Number(params.get('adMs')) || 0)
+    : 3000;
 
   const sys = {
     screenWidth: window.innerWidth,
@@ -56,15 +60,32 @@ export function createWebPlatform() {
   }
 
   function share(payload) {
-    if (navigator.share) {
-      return navigator.share(payload || {}).then(() => true).catch(() => false);
-    }
-    return Promise.resolve(false);
+    if (!navigator.share) return Promise.resolve(false);
+    const data = payload || {};
+    const title = data.title || 'Mosaic';
+    const url = data.query
+      ? window.location.origin + window.location.pathname + '?' + data.query
+      : window.location.href;
+    return navigator.share({ title, text: title, url }).then(() => true).catch(() => false);
+  }
+
+  function adMode() {
+    return 'simulated';
   }
 
   function showRewardedAd() {
-    // 模拟广告层在 Ticket 07 接入。
-    return Promise.resolve(false);
+    if (simulatedAdMs <= 0) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      setTimeout(() => resolve(true), simulatedAdMs);
+    });
+  }
+
+  function createCanvas() {
+    return document.createElement('canvas');
+  }
+
+  function debugInstall(api) {
+    window.__MOSAIC_DEBUG__ = api;
   }
 
   function createAudio(src, loop) {
@@ -127,6 +148,9 @@ export function createWebPlatform() {
     storage,
     share,
     showRewardedAd,
+    adMode,
+    createCanvas,
+    debugInstall,
     audio: { create: createAudio },
     onPointer,
     onHide,

@@ -17,6 +17,9 @@ export const PLATFORM_EXTRAS = [
   'designSize',
   'applyViewTransform',
   'pixelRatio',
+  'createCanvas',
+  'adMode',
+  'debugInstall',
   'log',
 ];
 

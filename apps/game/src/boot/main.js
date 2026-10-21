@@ -54,6 +54,14 @@ export function startBoot(platform, loadGameModule) {
     }
   });
 
+  platform.onHide(() => {
+    if (game && typeof game.onHide === 'function') game.onHide();
+  });
+
+  platform.onShow(() => {
+    if (game && typeof game.onShow === 'function') game.onShow();
+  });
+
   platform.onFrame((now) => {
     if (startedAt === null) startedAt = now;
     if (phase === 'loading' && subpackageReady && now - startedAt >= MIN_LOADING_MS) {

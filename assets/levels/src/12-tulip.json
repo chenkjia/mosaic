@@ -1,0 +1,29 @@
+{
+  "id": 12,
+  "name": "tulip",
+  "title": "郁金香",
+  "theme": "flowers",
+  "size": [
+    21,
+    28
+  ],
+  "ball": {
+    "count": 2,
+    "speed": 626
+  },
+  "obstacles": [],
+  "rewards": [
+    [
+      7,
+      10
+    ],
+    [
+      10,
+      5
+    ],
+    [
+      13,
+      10
+    ]
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "id": 2,
+  "name": "bunny",
+  "title": "兔子",
+  "theme": "animals",
+  "size": [
+    21,
+    28
+  ],
+  "ball": {
+    "count": 1,
+    "speed": 566
+  },
+  "obstacles": [],
+  "rewards": [
+    [
+      16,
+      21
+    ],
+    [
+      17,
+      21
+    ],
+    [
+      10,
+      24
+    ]
+  ]
+}
