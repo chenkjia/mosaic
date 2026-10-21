@@ -1,10 +1,4 @@
 {
   "deviceOrientation": "portrait",
-  "showStatusBar": false,
-  "subpackages": [
-    {
-      "name": "pkgGame",
-      "root": "pkg-game/"
-    }
-  ]
+  "showStatusBar": false
 }

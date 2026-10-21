@@ -14,7 +14,7 @@
 
 | Seam | 位置 | 接口 |
 |---|---|---|
-| platform | `apps/game/src/platform/` | `getSystemInfo()`、`getMainCanvas()`、`loadImage(src)`、`loadSubpackage(name)`、`storage.get/set`、`share(payload)`、`showRewardedAd(placement)`、`audio.create(src, loop)`、`onPointer(handler)`、`onHide/onShow` |
+| platform | `apps/game/src/platform/` | `getSystemInfo()`、`getMainCanvas()`、`loadImage(src)`、`storage.get/set`、`share(payload)`、`showRewardedAd(placement)`、`audio.create(src, loop)`、`onPointer(handler)`、`onHide/onShow` |
 | sim | `packages/shared/src/physics.js` | `createState(level, seed)`、`step(state, input, dt)` → `{ state, events }`；不读时间、不读全局随机 |
 | level | `packages/shared/src/level.js` | `parseLevel(json)`、`validateLevel(json)`、`gridToBricks(png)`（离线脚本复用） |
 | save | `packages/shared/src/save.js` | `defaultSave()`、`migrate(raw)`、`serialize(save)`；损坏降级 |
@@ -96,13 +96,13 @@
 ### 平台与构建
 
 - esbuild 三入口：`src/entries/{web,wechat,douyin}.js`；入口只装配 adapter，不含业务分支。
-- 微信 `subpackages` 全小写、抖音 `subPackages` 驼峰；主包仅 boot + loading；资源路径前缀在 adapter 内拼接。
+- 单包交付：`game.json` 不声明 `subpackages` / `subPackages`；游戏代码与图片全部随主包一次加载，微信/抖音共用同一入口逻辑。
 - 调试探针只挂 web entry；smoke 脚本 grep `dist/wechat`、`dist/douyin` 无探针符号。
 - 版本号取 `apps/game/package.json` 的 `version` 注入，入口打印 `[game] boot <version>`。
 
 ### 界面流程
 
-- `boot`：加载分包 → 读存档 → 进入 home。
+- `boot`：初始化游戏模块 → 读存档 → 进入 home。
 - `home`：标题 + 继续（最高关）+ 设置；无开始/关卡选择。
 - `play`：HUD（金币、关卡号、清除率、技能槽、暂停）→ 发球 → 局内 → 过关/失败。
 - `result`：过关结算（金币、下一关按钮）；失败面板（复活/重来）。

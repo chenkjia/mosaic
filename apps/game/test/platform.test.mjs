@@ -37,10 +37,6 @@ function makeApi() {
       });
       return img;
     },
-    loadSubpackage: ({ success }) => {
-      success();
-      return { onProgressUpdate() {} };
-    },
     getStorageSync: (key) => (kv.has(key) ? kv.get(key) : ''),
     setStorageSync: (key, value) => { kv.set(key, value); },
     shareAppMessage() {},
@@ -55,7 +51,7 @@ function makeApi() {
   };
 }
 
-test('小游戏 adapter 暴露全部 seam 且坐标/存储/分包可用', async () => {
+test('小游戏 adapter 暴露全部 seam 且坐标/存储可用', async () => {
   const api = makeApi();
   const platform = createMinigamePlatform(api, { simulatedAdMs: 0 });
   assertPlatformAdapter(platform);
@@ -77,7 +73,6 @@ test('小游戏 adapter 暴露全部 seam 且坐标/存储/分包可用', async 
   assert.equal(platform.storage.get('k'), 'v');
   assert.equal(platform.storage.get('missing'), null);
 
-  await platform.loadSubpackage('pkgGame');
   await platform.loadImage('ok.png');
   await assert.rejects(platform.loadImage('bad.png'), /图片加载失败/);
 

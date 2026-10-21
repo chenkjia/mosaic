@@ -53,12 +53,6 @@ export function createWebPlatform() {
     });
   }
 
-  function loadSubpackage(name, onProgress) {
-    // web 单 bundle，分包内容已随入口打平；保留异步契约让 loading 行为与真机一致。
-    if (typeof onProgress === 'function') onProgress(1);
-    return Promise.resolve();
-  }
-
   function share(payload) {
     if (!navigator.share) return Promise.resolve(false);
     const data = payload || {};
@@ -144,7 +138,6 @@ export function createWebPlatform() {
     getSystemInfo,
     getMainCanvas: () => canvas,
     loadImage,
-    loadSubpackage,
     storage,
     share,
     showRewardedAd,

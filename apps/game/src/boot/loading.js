@@ -67,7 +67,7 @@ export function createLoadingScene() {
     ctx.font = '500 26px "PingFang SC", "Microsoft YaHei", sans-serif';
     if (failed) {
       ctx.fillStyle = COLORS.error;
-      ctx.fillText('资源加载失败，点击屏幕重试', cx, barY + 72);
+      ctx.fillText('初始化失败，点击屏幕重试', cx, barY + 72);
     } else {
       ctx.fillStyle = COLORS.subtitle;
       const percent = Math.round(Math.min(1, shown) * 100);

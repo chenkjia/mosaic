@@ -29,10 +29,10 @@
 
 ## 构建与产物
 
-- `apps/game/src/` 以 ES modules 开发 → esbuild 按平台多入口打包至根 `dist/{web,wechat,douyin}`；dist 不入版本库。
+- `apps/game/src/` 以 ES modules 开发 → esbuild 按平台多入口打包至根 `dist/{web,wechat,douyin}`；dist 不入版本库。微信/抖音按单包交付，不声明分包（[ADR-0004](docs/adr/0004-single-main-package.md)）。
 - 「写完即构建」由 pre-commit hook 自动执行：源码暂存即全量构建，失败阻断提交。新环境执行一次 `git config core.hooksPath scripts/git-hooks`；hook 与构建脚本的启用方式见 `scripts/git-hooks/pre-commit` 头注。
 - 版本号单一事实源为 `apps/game/package.json` 的 `version`，构建时注入；web 端 `index.html` 自带按构建时间戳的缓存击穿，普通刷新即可拿到新 bundle，并用入口启动标记日志（如 `[game] boot <version>`）核对真实加载。
-- 交付前执行 `corepack pnpm verify:dist`：校验三端产物、探针隔离、版本注入、分包字段与体积预警线；广告位在 `apps/game/src/config/ads.js` 配置，留空走模拟广告。
+- 交付前执行 `corepack pnpm verify:dist`：校验三端产物、探针隔离、版本注入、单包结构（无分包字段）与体积预警线；广告位在 `apps/game/src/config/ads.js` 配置，留空走模拟广告。
 
 ## 验证
 

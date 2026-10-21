@@ -90,3 +90,12 @@
 - 关键修复：结算自动倒计时改用真实 rAF 时间并在切后台取消；bitmap-cache 复用单张离屏 canvas；广告位配置从 adapter 硬编码改为 `config/ads.js` 注入。
 - 剩余风险：微信/抖音真机与低端机性能未验证；真实激励视频三通道与分享卡片未验；关卡美术辨识度未人工走查；软著材料未产出；红/绿球缺少玩家可见的产出入口，需用户确认来源后再改 spec。
 - 下一步：用户按 `docs/verify/device-checklist.md` 执行双平台真机走查并回报；确认红/绿球产出方式；配置真实广告位；推进 REQ-002 软著与上线资质。
+
+## 2026-10-21 · REQ-001 取消分包，改单包交付
+
+- 触发：微信开发者工具报 `未找到 ["subpackages"][0]["root"] 对应的 /pkg-game/game.js`。根因是分包 root 内必须自带 `game.js`，旧构建只有 `pkg-game/index.js`。
+- 关键决定：按用户要求取消分包，微信/抖音改为单包（`game.js` + `game.json` + `assets/`）；删除 `loadSubpackage` seam、`entries/pkg-game.js` 与分享封面 `pkg-game/` 前缀。决策见 [ADR-0004](docs/adr/0004-single-main-package.md)。
+- 改动：`boot/main.js` 直接初始化静态引入的游戏模块；`platform/{contract,web,minigame}.js` 移除分包 seam；`scripts/build.mjs` 单入口输出与单包体积；两份 `game.json` 去分包字段；`verify-dist.mjs` 断言无分包且无 `pkg-game/`；manifest/platform 测试与相关文档同步。
+- 验证：42/42 测试通过；三端构建各 0.44MB；`verify:dist` OK；`dist/wechat`、`dist/douyin` 仅 `game.js` + `game.json` + `assets/share/cover.png`；web 浏览器启动 `scene=home`、无 console error。
+- 剩余风险：真机走查仍需按清单执行；单包 4MB 上限下后续资源增长需靠图集压缩/裁图控制。
+

@@ -2,7 +2,6 @@ export const PLATFORM_SEAMS = [
   'getSystemInfo',
   'getMainCanvas',
   'loadImage',
-  'loadSubpackage',
   'storage',
   'share',
   'showRewardedAd',

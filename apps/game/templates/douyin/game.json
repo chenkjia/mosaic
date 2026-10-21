@@ -1,9 +1,3 @@
 {
-  "deviceOrientation": "portrait",
-  "subPackages": [
-    {
-      "name": "pkgGame",
-      "root": "pkg-game/"
-    }
-  ]
+  "deviceOrientation": "portrait"
 }

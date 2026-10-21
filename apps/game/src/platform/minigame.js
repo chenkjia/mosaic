@@ -65,34 +65,9 @@ export function createMinigamePlatform(api, options) {
     });
   }
 
-  function loadSubpackage(name, onProgress) {
-    return new Promise((resolve, reject) => {
-      if (typeof api.loadSubpackage !== 'function') {
-        resolve();
-        return;
-      }
-      const task = api.loadSubpackage({
-        name,
-        success: () => resolve(),
-        fail: (err) => reject(err || new Error('[platform] 分包加载失败: ' + name)),
-      });
-      if (task && typeof task.onProgressUpdate === 'function' && typeof onProgress === 'function') {
-        task.onProgressUpdate((res) => {
-          if (res && typeof res.progress === 'number') {
-            onProgress(res.progress / 100);
-          }
-        });
-      }
-    });
-  }
-
   function share(payload) {
     if (typeof api.shareAppMessage !== 'function') return false;
     const data = Object.assign({}, payload || {});
-    // 主包只含 boot/loading，游戏资源都在分包内，分享封面必须带分包前缀。
-    if (typeof data.imageUrl === 'string' && data.imageUrl.indexOf('assets/') === 0) {
-      data.imageUrl = 'pkg-game/' + data.imageUrl;
-    }
     api.shareAppMessage(data);
     return true;
   }
@@ -263,7 +238,6 @@ export function createMinigamePlatform(api, options) {
     getSystemInfo,
     getMainCanvas: () => canvas,
     loadImage,
-    loadSubpackage,
     storage,
     share,
     showRewardedAd,

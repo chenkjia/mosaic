@@ -23,3 +23,7 @@ Status: done
 - 测试：`node --test` 10/10 通过（seam、坐标、存储、分包、模板、loading 绘制）。
 - 浏览器：`file://` 与 8000 端口均输出 `[game] boot 0.1.0` → `[boot] home 0.1.0`。
 - 主包验收：产物 grep 无主页文案；微信 `subpackages` / 抖音 `subPackages` 字段正确。
+
+## 后续变更（2026-10-21）
+
+分包方案已废弃：微信开发者工具要求分包 root 内存在 `game.js`，旧构建输出 `pkg-game/index.js` 导致导入失败；当前包体仅 0.44MB，分包无收益。已改为单包交付（`game.js` + `game.json` + `assets/`），`loadSubpackage` seam 与分包入口一并移除。决策见 [ADR-0004](../../../docs/adr/0004-single-main-package.md)。

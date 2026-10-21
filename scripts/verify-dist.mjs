@@ -47,18 +47,9 @@ function expectFile(file, label) {
 function checkSize(name, dir) {
   const total = dirSize(dir);
   const totalMb = (total / MB).toFixed(2);
-  let main = total;
-  let pkg = 0;
-  if (name !== 'web') {
-    const pkgDir = path.join(dir, 'pkg-game');
-    if (existsSync(pkgDir)) pkg = dirSize(pkgDir);
-    main = total - pkg;
-    if (main > 2 * MB) fail(name + ' 主包 ' + (main / MB).toFixed(2) + 'MB 超过 2MB 预警线');
-    if (total > 18 * MB) fail(name + ' 总包 ' + totalMb + 'MB 超过 18MB 预警线');
-    notes.push(name + ': 主包 ' + (main / MB).toFixed(2) + 'MB / 分包 ' + (pkg / MB).toFixed(2) + 'MB / 总包 ' + totalMb + 'MB');
-  } else {
-    notes.push(name + ': 总包 ' + totalMb + 'MB');
-  }
+  if (total > 2 * MB) fail(name + ' 包体 ' + totalMb + 'MB 超过 2MB 预警线');
+  if (total > 18 * MB) fail(name + ' 包体 ' + totalMb + 'MB 超过 18MB 预警线');
+  notes.push(name + ': 单包 ' + totalMb + 'MB');
 }
 
 function checkWeb() {
@@ -93,14 +84,12 @@ function checkMinigame(name) {
     fail('dist/' + name + ' 不存在（先执行 pnpm build）');
     return;
   }
-  const boot = path.join(dir, 'game.js');
+  const game = path.join(dir, 'game.js');
   const manifest = path.join(dir, 'game.json');
-  const pkgDir = path.join(dir, 'pkg-game');
-  const pkg = path.join(pkgDir, 'index.js');
-  expectFile(boot, name + ' game.js ');
+  expectFile(game, name + ' game.js ');
   expectFile(manifest, name + ' game.json ');
-  expectFile(pkg, name + ' pkg-game/index.js ');
-  expectFile(path.join(pkgDir, 'assets/share/cover.png'), name + ' 分享封面 ');
+  expectFile(path.join(dir, 'assets/share/cover.png'), name + ' 分享封面 ');
+  if (existsSync(path.join(dir, 'pkg-game'))) fail(name + ' 仍含 pkg-game/ 分包目录，应为单包产物');
 
   if (existsSync(manifest)) {
     let json;
@@ -110,8 +99,7 @@ function checkMinigame(name) {
       fail(name + ' game.json 非法 JSON: ' + err.message);
     }
     if (json) {
-      const subs = json.subpackages || json.subPackages || [];
-      if (!subs.some((s) => s.root === 'pkg-game/')) fail(name + ' game.json 缺少 pkg-game 分包配置');
+      if (json.subpackages || json.subPackages) fail(name + ' game.json 不应声明分包字段');
       if (json.deviceOrientation !== 'portrait') fail(name + ' game.json 未声明竖屏 deviceOrientation');
     }
   }
@@ -122,14 +110,11 @@ function checkMinigame(name) {
     if (js.includes('__MOSAIC_DEBUG__')) fail(rel + ' 含调试探针 __MOSAIC_DEBUG__（不得进入小游戏包）');
     if (file.endsWith('.js') && !js.includes(VERSION)) fail(rel + ' 未注入版本号 ' + VERSION);
   }
-  if (existsSync(boot) && !read(boot).includes('[game] boot ')) {
-    fail(name + ' game.js 缺少启动标记日志 [game] boot');
-  }
-
-  if (existsSync(pkg)) {
-    const js = read(pkg);
-    const hits = js.match(/\b(window|document|wx|tt)\./g) || [];
-    if (hits.length) fail(name + ' pkg-game/index.js 直接引用平台全局: ' + [...new Set(hits)].join(', '));
+  if (existsSync(game)) {
+    const js = read(game);
+    if (!js.includes('[game] boot ')) fail(name + ' game.js 缺少启动标记日志 [game] boot');
+    const hits = js.match(/\b(window|document)\./g) || [];
+    if (hits.length) fail(name + ' game.js 直接引用 DOM 全局: ' + [...new Set(hits)].join(', '));
   }
   checkSize(name, dir);
 }

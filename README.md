@@ -29,7 +29,7 @@ python3 -m http.server 8000 --directory dist/web
 - [REQ-001 验证报告](docs/verify/REQ-001-verification.md)
 - [微信 / 抖音真机走查清单](docs/verify/device-checklist.md)
 - [上线与商业化待办（REQ-002）](docs/requirements/REQ-002-launch-commercialization.md)
-- 构建产物 smoke：`corepack pnpm verify:dist`（探针隔离、版本注入、分包配置、体积预警）。
+- 构建产物 smoke：`corepack pnpm verify:dist`（探针隔离、版本注入、单包结构与体积预警）。
 
 ## 流程与文档
 

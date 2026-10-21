@@ -21,24 +21,24 @@
 |---|---|
 | `corepack pnpm test` | 42 项全部通过（shared 25 项 / 3 个文件；game 17 项 / 5 个文件） |
 | `corepack pnpm build` | web / wechat / douyin 三端构建成功 |
-| `node scripts/verify-dist.mjs` | OK：产物存在、探针隔离、版本注入、分包配置、体积预警线 |
+| `node scripts/verify-dist.mjs` | OK：产物存在、探针隔离、版本注入、单包结构（无分包字段）、体积预警线 |
 | `node --check`（本轮修改文件） | 通过 |
 
 ## 构建与体积
 
-| 产物 | 主包 | 分包 | 总包 |
-|---|---|---|---|
-| `dist/web` | — | — | 0.44MB |
-| `dist/wechat` | 0.02MB | 0.42MB | 0.44MB |
-| `dist/douyin` | 0.02MB | 0.42MB | 0.44MB |
+| 产物 | 单包 |
+|---|---|
+| `dist/web` | 0.44MB |
+| `dist/wechat` | 0.44MB |
+| `dist/douyin` | 0.44MB |
 
-预警线：主包 ≤ 2MB、总包 ≤ 18MB，均远低于阈值。版本号 `0.1.0` 由 `apps/game/package.json` 注入三端。
+预警线：单包 ≤ 2MB、≤ 18MB 上限，均远低于阈值。版本号 `0.1.0` 由 `apps/game/package.json` 注入三端。
 
 产物 smoke（`scripts/verify-dist.mjs`）：
 
 - `__MOSAIC_DEBUG__` 仅存在于 `dist/web/main.js`，微信/抖音包内零命中。
-- `dist/wechat`、`dist/douyin` 的 `pkg-game/index.js` 无 `window.` / `document.` / `wx.` / `tt.` 直接引用。
-- 微信 `subpackages`、抖音 `subPackages` 均指向 `pkg-game/`，且声明竖屏。
+- `dist/wechat`、`dist/douyin` 的 `game.js` 无 `window.` / `document.` 直接引用（`wx.` / `tt.` 属 adapter 合法使用）。
+- 微信/抖音 `game.json` 均不声明分包，且声明竖屏；产物只有 `game.js` + `game.json` + `assets/`。
 - 三端均含 `[game] boot` 启动标记与分享封面 `assets/share/cover.png`。
 
 ## 验收标准对照
@@ -87,7 +87,7 @@
 
 | 项 | 状态 | 说明 |
 |---|---|---|
-| 微信/抖音真机启动、触摸、分包加载 | 未执行 | 由用户按 `device-checklist.md` 执行 |
+| 微信/抖音真机启动、触摸 | 未执行 | 由用户按 `device-checklist.md` 执行 |
 | 真实激励视频三通道 | 未执行 | `apps/game/src/config/ads.js` 当前为空，走模拟广告；填入真实 ID 后需真机验收 |
 | 微信/抖音分享卡片 | 仅 web 回退验证 | 真机分享标题/封面/query 待验 |
 | 低端机帧率、发热、内存 | 未执行 | 已做 bitmap-cache、零逐帧渐变、粒子上限；仍需真机观察 |

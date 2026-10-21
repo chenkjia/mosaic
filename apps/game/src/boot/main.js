@@ -1,7 +1,6 @@
 import { assertPlatformAdapter } from '../platform/contract.js';
 import { createLoadingScene } from './loading.js';
 
-export const SUBPACKAGE_NAME = 'pkgGame';
 const MIN_LOADING_MS = 600;
 
 const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev';
@@ -15,7 +14,7 @@ export function startBoot(platform, loadGameModule) {
 
   let phase = 'loading';
   let game = null;
-  let subpackageReady = false;
+  let gameReady = false;
   let startedAt = null;
   let loadToken = 0;
 
@@ -24,24 +23,25 @@ export function startBoot(platform, loadGameModule) {
   function startLoad() {
     const token = ++loadToken;
     phase = 'loading';
-    subpackageReady = false;
+    gameReady = false;
     game = null;
     loading.reset();
+    loading.setProgress(0.15);
 
-    platform.loadSubpackage(SUBPACKAGE_NAME, (progress) => {
-      if (token === loadToken) loading.setProgress(progress);
-    }).then(async () => {
-      const createGame = await loadGameModule();
-      if (token !== loadToken) return;
-      game = createGame(platform, canvas);
-      loading.setProgress(1);
-      subpackageReady = true;
-    }).catch((err) => {
-      if (token !== loadToken) return;
-      loading.setFailed(true);
-      phase = 'error';
-      platform.log('[boot] 分包加载失败: ' + (err && err.message ? err.message : String(err)));
-    });
+    Promise.resolve()
+      .then(() => loadGameModule())
+      .then((createGame) => {
+        if (token !== loadToken) return;
+        game = createGame(platform, canvas);
+        loading.setProgress(1);
+        gameReady = true;
+      })
+      .catch((err) => {
+        if (token !== loadToken) return;
+        loading.setFailed(true);
+        phase = 'error';
+        platform.log('[boot] 初始化失败: ' + (err && err.message ? err.message : String(err)));
+      });
   }
 
   platform.onPointer((event) => {
@@ -64,7 +64,7 @@ export function startBoot(platform, loadGameModule) {
 
   platform.onFrame((now) => {
     if (startedAt === null) startedAt = now;
-    if (phase === 'loading' && subpackageReady && now - startedAt >= MIN_LOADING_MS) {
+    if (phase === 'loading' && gameReady && now - startedAt >= MIN_LOADING_MS) {
       phase = 'game';
       platform.log('[boot] home ' + version);
     }

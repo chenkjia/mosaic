@@ -11,27 +11,14 @@ const ROOT = path.resolve(GAME_DIR, '../..');
 const SRC = path.join(GAME_DIR, 'src');
 const TEMPLATES = path.join(GAME_DIR, 'templates');
 const ASSETS = path.join(GAME_DIR, 'assets');
-const PKG_DIR = 'pkg-game';
 const MB = 1024 * 1024;
 
 const pkg = JSON.parse(readFileSync(path.join(GAME_DIR, 'package.json'), 'utf8'));
 
 const TARGETS = {
   web: { kind: 'web', entry: 'entries/web.js', outfile: 'main.js' },
-  wechat: {
-    kind: 'minigame',
-    bootEntry: 'entries/wechat.js',
-    bootOutfile: 'game.js',
-    pkgEntry: 'entries/pkg-game.js',
-    pkgOutfile: PKG_DIR + '/index.js',
-  },
-  douyin: {
-    kind: 'minigame',
-    bootEntry: 'entries/douyin.js',
-    bootOutfile: 'game.js',
-    pkgEntry: 'entries/pkg-game.js',
-    pkgOutfile: PKG_DIR + '/index.js',
-  },
+  wechat: { kind: 'minigame', entry: 'entries/wechat.js', outfile: 'game.js' },
+  douyin: { kind: 'minigame', entry: 'entries/douyin.js', outfile: 'game.js' },
 };
 
 function parseTarget() {
@@ -93,7 +80,8 @@ function stampWebHtml(outDir) {
 }
 
 async function buildWeb(outDir) {
-  await bundle({ entry: TARGETS.web.entry, outfile: TARGETS.web.outfile, format: 'iife', outDir });
+  const cfg = TARGETS.web;
+  await bundle({ entry: cfg.entry, outfile: cfg.outfile, format: 'iife', outDir });
   copyTemplates('web', outDir);
   copyAssets(outDir);
   stampWebHtml(outDir);
@@ -102,24 +90,16 @@ async function buildWeb(outDir) {
 
 async function buildMinigame(name, outDir) {
   const cfg = TARGETS[name];
-  await bundle({ entry: cfg.bootEntry, outfile: cfg.bootOutfile, format: 'iife', outDir });
-  await bundle({ entry: cfg.pkgEntry, outfile: cfg.pkgOutfile, format: 'cjs', outDir });
+  await bundle({ entry: cfg.entry, outfile: cfg.outfile, format: 'iife', outDir });
   copyTemplates(name, outDir);
-  if (existsSync(ASSETS)) {
-    cpSync(ASSETS, path.join(outDir, PKG_DIR, 'assets'), { recursive: true });
-  }
+  copyAssets(outDir);
 
-  const pkgSize = dirSize(path.join(outDir, PKG_DIR));
   const totalSize = dirSize(outDir);
-  const mainSize = totalSize - pkgSize;
   const warn = [];
-  if (mainSize > 2 * MB) warn.push('主包超过 2MB 预警线（平台上限 4MB）');
-  if (totalSize > 18 * MB) warn.push('总包超过 18MB 预警线（微信上限 30MB / 抖音上限 20MB）');
+  if (totalSize > 2 * MB) warn.push('包体超过 2MB 预警线（微信单包上限 4MB / 抖音 4MB）');
+  if (totalSize > 18 * MB) warn.push('包体超过 18MB 预警线（微信上限 30MB / 抖音上限 20MB）');
 
-  console.log('[build] ' + name + ' OK');
-  console.log('  主包 dist/' + name + '（不含 ' + PKG_DIR + '/）: ' + toMb(mainSize) + 'MB');
-  console.log('  分包 dist/' + name + '/' + PKG_DIR + '/: ' + toMb(pkgSize) + 'MB');
-  console.log('  总包: ' + toMb(totalSize) + 'MB');
+  console.log('[build] ' + name + ' OK  合计 ' + toMb(totalSize) + 'MB');
   for (const line of warn) console.log('  [WARN] ' + line);
 }
 
