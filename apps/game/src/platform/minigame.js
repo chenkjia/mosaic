@@ -196,15 +196,18 @@ export function createMinigamePlatform(api, options) {
 
   function onPointer(handler) {
     const emit = (type) => (res) => {
-      const touch = (res.touches && res.touches[0])
-        || (res.changedTouches && res.changedTouches[0]);
-      if (!touch) return;
-      const point = clientToDesign(canvas, sys, touch.clientX, touch.clientY);
-      handler({ type, x: point.x, y: point.y });
+      const list = res.changedTouches || res.touches;
+      if (!list) return;
+      for (let i = 0; i < list.length; i += 1) {
+        const touch = list[i];
+        const point = clientToDesign(canvas, sys, touch.clientX, touch.clientY);
+        handler({ type, id: touch.identifier, x: point.x, y: point.y });
+      }
     };
     if (typeof api.onTouchStart === 'function') api.onTouchStart(emit('start'));
     if (typeof api.onTouchMove === 'function') api.onTouchMove(emit('move'));
     if (typeof api.onTouchEnd === 'function') api.onTouchEnd(emit('end'));
+    if (typeof api.onTouchCancel === 'function') api.onTouchCancel(emit('cancel'));
   }
 
   function debugInstall() {

@@ -99,3 +99,13 @@
 - 验证：42/42 测试通过；三端构建各 0.44MB；`verify:dist` OK；`dist/wechat`、`dist/douyin` 仅 `game.js` + `game.json` + `assets/share/cover.png`；web 浏览器启动 `scene=home`、无 console error。
 - 剩余风险：真机走查仍需按清单执行；单包 4MB 上限下后续资源增长需靠图集压缩/裁图控制。
 
+
+## 2026-10-21 · REQ-001 局内界面铺到底 + 手势接管
+
+- 触发：用户反馈手指滑出游戏区域挡板就断手，要求界面直接延伸到屏幕最底。经 grilling 定案 Q28–Q35：面板通宽铺到底、双层保留棋盘底面、控件避让 `safeBottom`、按下跟到抬手、第一根手指独占、空白处按下即发球、触点即位置、只改局内场景。
+- 根因：断手不是画布尺寸问题（canvas 本就全屏），而是场景按触点位置过滤输入（`play.js` 的 `inBoard` 矩形）；同时小游戏 adapter 只上报 `touches[0]`，事件没有手指 id，无法实现手势归属。
+- 改动：`game/layout.js` 新增 `panel`（HUD 下沿通宽铺到设计底边，兼作操作区判定）与 `safeBottom` 避让；`game/scene/play.js` 拆出 `drawPanel`、新增 `dragId` 接管状态并重写 `onPointer`、快照加 `dragging`；`platform/web.js` 事件补 `pointerId` 且 `pointercancel` 改发 `cancel`；`platform/minigame.js` 逐 `changedTouches` 上报带 `identifier` 的事件并注册 `onTouchCancel`；`game/index.js` 调试 `click` 补发 `end`。
+- 术语：`CONTEXT.md` 新增 棋盘 / 游戏面板 / 操作区，改写 挡板（原定义「位置直接跟随触点」与代码不符）。
+- 验证：44/44 测试通过（新增面板铺底、安全区避让两组；platform 测试补多指与 cancel 断言）；`build` + `verify:dist` 三端通过（0.44/0.45/0.45MB）；浏览器派发真实 PointerEvent 断言按下即发球、拖到设计底边 `dragging` 保持、抬手保留 639、HUD 空白与技能槽按下不动挡板、第二指不抢接管、调试 click 后真实按下仍可驱动；fallback 与 375×812 fit 两视口面板下沿均等于设计底边；控制台无 error。
+- 剩余风险：真机多指与系统手势打断（`onTouchCancel` 在抖音的可用性）未验证，已列入走查清单 2.16–2.19、6.6–6.7；1334 高 + 大安全区的极端组合下提示文字贴近安全区（技能槽仍避让）。
+- 下一步：用户真机走查新增条目；面板与棋盘双层质感如需加强对比再调 alpha。

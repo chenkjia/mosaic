@@ -46,6 +46,7 @@ function makeApi() {
     onTouchStart: (fn) => { listeners.start = fn; },
     onTouchMove: (fn) => { listeners.move = fn; },
     onTouchEnd: (fn) => { listeners.end = fn; },
+    onTouchCancel: (fn) => { listeners.cancel = fn; },
     onHide() {},
     onShow() {},
   };
@@ -76,12 +77,34 @@ test('小游戏 adapter 暴露全部 seam 且坐标/存储可用', async () => {
   await platform.loadImage('ok.png');
   await assert.rejects(platform.loadImage('bad.png'), /图片加载失败/);
 
-  let pointed = null;
-  platform.onPointer((event) => { pointed = event; });
-  api.listeners.start({ touches: [{ clientX: 187.5, clientY: 333.5 }] });
-  assert.equal(pointed.type, 'start');
-  assert.equal(pointed.x, 375);
-  assert.equal(pointed.y, 667);
+  const pointed = [];
+  platform.onPointer((event) => { pointed.push(event); });
+  api.listeners.start({
+    touches: [],
+    changedTouches: [{ identifier: 0, clientX: 187.5, clientY: 333.5 }],
+  });
+  assert.equal(pointed.length, 1);
+  assert.equal(pointed[0].type, 'start');
+  assert.equal(pointed[0].id, 0);
+  assert.equal(pointed[0].x, 375);
+  assert.equal(pointed[0].y, 667);
+
+  api.listeners.move({
+    touches: [],
+    changedTouches: [
+      { identifier: 1, clientX: 93.75, clientY: 166.75 },
+      { identifier: 2, clientX: 281.25, clientY: 500.25 },
+    ],
+  });
+  assert.equal(pointed.length, 3);
+  assert.deepEqual(pointed.slice(1).map((event) => event.id), [1, 2]);
+  assert.equal(pointed[2].x, 562.5);
+
+  api.listeners.cancel({
+    touches: [],
+    changedTouches: [{ identifier: 1, clientX: 93.75, clientY: 166.75 }],
+  });
+  assert.equal(pointed[pointed.length - 1].type, 'cancel');
 
   assert.equal(platform.adMode(), 'simulated');
   assert.equal(await platform.showRewardedAd('revive'), true);

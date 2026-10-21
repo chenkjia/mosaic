@@ -112,7 +112,8 @@ export function createGameApp(platform) {
       return play.debugUseSkill(index);
     },
     click(x, y) {
-      onPointer({ type: 'start', x, y });
+      onPointer({ type: 'start', id: 'debug', x, y });
+      onPointer({ type: 'end', id: 'debug', x, y });
       return true;
     },
     getRects() {

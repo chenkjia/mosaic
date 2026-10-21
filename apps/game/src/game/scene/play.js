@@ -118,6 +118,7 @@ export function createPlayScene(deps) {
   let lastNow = 0;
   let acc = 0;
   let paddleTarget = null;
+  let dragId = null;
   let launchQueued = false;
   let brickVersion = 0;
   let clearAt = 0;
@@ -151,6 +152,7 @@ export function createPlayScene(deps) {
     lastNow = 0;
     acc = 0;
     paddleTarget = sim.paddle.x;
+    dragId = null;
     launchQueued = false;
     brickVersion = 0;
     clearAt = 0;
@@ -516,16 +518,34 @@ export function createPlayScene(deps) {
     audio.play('skill');
   }
 
+  function pointerIdOf(event) {
+    return event.id == null ? 'primary' : event.id;
+  }
+
+  function movePaddleTo(x) {
+    const half = sim.paddle.w / 2;
+    paddleTarget = clamp(x - layout.board.x, half, BOARD.w - half);
+  }
+
+  function inOperation(event) {
+    const area = layout.panel;
+    return event.x >= area.x && event.x <= area.x + area.w
+      && event.y >= area.y && event.y <= area.y + area.h;
+  }
+
   function onPointer(event) {
     if (!view || !sim || !layout) return;
+    const id = pointerIdOf(event);
     if (modal) {
+      dragId = null;
       if (event.type !== 'start') return;
-      const id = hitModal(modal, view, event.x, event.y);
-      if (id) handleAction(id);
+      const action = hitModal(modal, view, event.x, event.y);
+      if (action) handleAction(action);
       return;
     }
     if (event.type === 'start') {
       if (hitRect(layout.pause, event.x, event.y, 10)) {
+        dragId = null;
         pauseForModal();
         modal = pauseModal();
         return;
@@ -535,18 +555,22 @@ export function createPlayScene(deps) {
         useSkill(slot);
         return;
       }
+      if (dragId !== null) return;
+      if (!inOperation(event)) return;
+      dragId = id;
+      movePaddleTo(event.x);
+      if (sim.phase === 'ready') launchQueued = true;
+      return;
     }
-    const inBoard = event.y >= layout.board.y - 34
-      && event.y <= layout.board.y + layout.board.h + 20;
-    if (!inBoard) return;
-    const half = sim.paddle.w / 2;
-    paddleTarget = clamp(event.x - layout.board.x, half, BOARD.w - half);
-    if (event.type === 'start' && sim.phase === 'ready') {
-      launchQueued = true;
+    if (event.type === 'move') {
+      if (id === dragId) movePaddleTo(event.x);
+      return;
     }
+    if (id === dragId) dragId = null;
   }
 
   function onHide() {
+    dragId = null;
     if (modal && modal.kind !== 'pause') {
       // 切后台时停掉结算倒计时，回来后让用户自己点下一关。
       if (modal.kind === 'result') modal.autoAt = 0;
@@ -618,6 +642,17 @@ export function createPlayScene(deps) {
     }
     ctx.fillStyle = background;
     ctx.fillRect(v.bleed.x, v.bleed.y, v.bleed.w, v.bleed.h);
+  }
+
+  function drawPanel(ctx) {
+    const panel = layout.panel;
+    // 下沿多画一个半径，让底部圆角落在屏外，可见部分只剩顶部两角
+    roundRectPath(ctx, panel.x, panel.y, panel.w, panel.h + 20, 20);
+    ctx.fillStyle = 'rgba(255,255,255,0.20)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.42)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
   }
 
   function drawBoard(ctx) {
@@ -792,6 +827,7 @@ export function createPlayScene(deps) {
     tick(now);
 
     drawBackground(ctx, v);
+    drawPanel(ctx);
     drawBoard(ctx);
     drawDrops(ctx);
     beams.draw(ctx);
@@ -838,6 +874,7 @@ export function createPlayScene(deps) {
       paddleX: sim.paddle.x,
       paddleW: sim.paddle.w,
       paddleTarget,
+      dragging: dragId !== null,
       time: sim.time,
       acc,
       lastNow,
@@ -861,6 +898,7 @@ export function createPlayScene(deps) {
     if (!layout) return null;
     return {
       board: layout.board,
+      panel: layout.panel,
       pause: layout.pause,
       skills: layout.skill.slots,
       modal: modal ? modalLayout(modal, view) : null,

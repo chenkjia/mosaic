@@ -5,9 +5,16 @@ export const SLOT_COUNT = 4;
 export const SLOT_SIZE = 84;
 export const SLOT_GAP = 18;
 
+const HINT_GAP = 34;
+const HINT_OFFSET = SLOT_SIZE + 58;
+
 export function computePlayLayout(view) {
   const board = { x: BOARD.x, y: BOARD.y, w: BOARD.w, h: BOARD.h };
-  const skillY = Math.max(board.y + board.h + 18, view.h - 204);
+  const bleed = view.bleed || { x: 0, y: 0, w: view.w, h: view.h };
+  const panelTop = HUD_H;
+  const panelBottom = bleed.y + bleed.h;
+  const controlLimit = panelBottom - Math.max(0, view.safeBottom || 0);
+  const skillY = Math.max(board.y + board.h + 18, controlLimit - HINT_GAP - HINT_OFFSET);
   const totalW = SLOT_COUNT * SLOT_SIZE + (SLOT_COUNT - 1) * SLOT_GAP;
   const skillX = (view.w - totalW) / 2;
   const slots = [];
@@ -21,6 +28,7 @@ export function computePlayLayout(view) {
   }
   return {
     hud: { x: 0, y: 0, w: view.w, h: HUD_H },
+    panel: { x: bleed.x, y: panelTop, w: bleed.w, h: panelBottom - panelTop },
     board,
     pause: { x: 648, y: 36, w: 64, h: 64 },
     coin: { x: 486, y: 42, w: 146, h: 52 },

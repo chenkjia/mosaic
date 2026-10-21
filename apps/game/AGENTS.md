@@ -22,6 +22,7 @@
 - `src/ui/`：组件层。每个组件自带规格表，负责「画什么」。
 - 场景/业务层：组合层，只调用 ui/gfx，不直接写 ctx 样式细节。
 - 业务层永远在 750 设计坐标系绘制，platform 层 fit 缩放；触摸换算读画布实际尺寸。
+- 局内界面两层：游戏面板通宽铺到设计底边，既是底衬也是操作区判定矩形；棋盘圆角底面叠在其上只标示反弹边界。技能槽与提示自「底边 − `safeBottom`」向上排布。操作区判定用面板矩形，禁止退回棋盘矩形（会断手）。
 
 ## 单包架构
 
@@ -56,3 +57,6 @@
 - 广告三通道在真机一直走模拟广告 → entries 没有把广告位 ID 传给 adapter。**方案**：在 `src/config/ads.js` 填 `AD_UNIT_ID` / `AD_UNIT_IDS`，由 entries 注入；留空即模拟广告。**验证**：`platform.adMode()` 返回 `sdk`，真机拉起平台广告。
 - 产物混入调试探针或 DOM 全局 → 小游戏入口误引 web/平台模块。**方案**：小游戏入口只静态 import `createGameApp` 与对应 adapter；探针只在 web adapter 安装。**验证**：`corepack pnpm verify:dist` 通过（微信/抖音零探针、无 `window.`/`document.` 直接引用）。
 - 微信开发者工具报 `未找到 ["subpackages"][0]["root"] 对应的 /pkg-game/game.js` → 小游戏分包根目录必须有自己的 `game.js`，而旧构建只输出 `pkg-game/index.js`。**方案**：取消分包，改为单包 `game.js`（ADR-0004）。**验证**：`dist/wechat/game.json` 无分包字段，产物仅 `game.js` + `game.json` + `assets/`。
+- 手指滑出棋盘下沿挡板就不跟 → 场景按触点**位置**过滤输入（`inBoard` 矩形），而拖动是**手势**，位置过滤必然断手。**方案**：操作区内按下即接管挡板直到抬手/取消，接管中越界只按棋盘钳制。**验证**：浏览器派发真实 PointerEvent 拖到设计底边，`getSnapshot().dragging` 始终为 `true`。
+- 真机第二根手指点技能槽没反应、或误抢挡板 → adapter 只上报 `touches[0]`，事件没有手指 id，场景无法区分谁按下谁抬起。**方案**：逐 `changedTouches` 上报带 `identifier` 的事件，注册 `onTouchCancel` 发 `cancel`；场景按 id 判定第一根手指独占。**验证**：`apps/game/test/platform.test.mjs` 多指与 cancel 断言。
+- 接管后挡板永久卡死不动 → 只靠抬手事件释放接管，遇到系统手势打断、切后台、调试 API 只发 `start` 时 `dragId` 永不释放。**方案**：`cancel`、`onHide`、弹窗打开、开新局一律释放；调试 `click` 补发同 id 的 `end`。**验证**：`__MOSAIC_DEBUG__.click()` 之后真实手指按下仍能驱动挡板。

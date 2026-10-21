@@ -72,6 +72,37 @@ test('局内布局在所有设计高度内坐标合法', () => {
   }
 });
 
+test('游戏面板通宽并铺到屏幕最底', () => {
+  const views = [
+    { w: 750, h: 1624, bleed: { x: 0, y: 0, w: 750, h: 1624 } },
+    { w: 750, h: 1334, bleed: { x: -47, y: 0, w: 844, h: 1334 } },
+  ];
+  for (const view of views) {
+    const layout = computePlayLayout(view);
+    assert.equal(layout.panel.x, view.bleed.x);
+    assert.equal(layout.panel.w, view.bleed.w);
+    assert.equal(layout.panel.y + layout.panel.h, view.h);
+    assert.ok(layout.panel.y >= layout.hud.h);
+    assert.ok(layout.panel.y <= layout.board.y);
+  }
+});
+
+test('面板贴底时控件避让安全区', () => {
+  for (const h of [1334, 1624, 1900]) {
+    for (const safeBottom of [0, 34, 68]) {
+      const view = { w: 750, h, bleed: { x: 0, y: 0, w: 750, h }, safeBottom };
+      const layout = computePlayLayout(view);
+      const limit = h - safeBottom;
+      assert.equal(layout.panel.y + layout.panel.h, h);
+      assert.ok(layout.board.y + layout.board.h < layout.skill.y);
+      for (const slot of layout.skill.slots) {
+        assert.ok(slot.y + slot.h <= limit, '技能槽底边越入安全区: h=' + h + ' safe=' + safeBottom);
+      }
+      assert.ok(layout.hintY < h);
+    }
+  }
+});
+
 test('宝石砖四态绘制坐标均为有限值', () => {
   const cases = [
     { type: 'normal', hp: 1, color: 5 },

@@ -14,7 +14,7 @@
 
 | Seam | 位置 | 接口 |
 |---|---|---|
-| platform | `apps/game/src/platform/` | `getSystemInfo()`、`getMainCanvas()`、`loadImage(src)`、`storage.get/set`、`share(payload)`、`showRewardedAd(placement)`、`audio.create(src, loop)`、`onPointer(handler)`、`onHide/onShow` |
+| platform | `apps/game/src/platform/` | `getSystemInfo()`、`getMainCanvas()`、`loadImage(src)`、`storage.get/set`、`share(payload)`、`showRewardedAd(placement)`、`audio.create(src, loop)`、`onPointer(handler)`（事件 `{type: start\|move\|end\|cancel, id, x, y}`，小游戏端逐 `changedTouches` 上报）、`onHide/onShow` |
 | sim | `packages/shared/src/physics.js` | `createState(level, seed)`、`step(state, input, dt)` → `{ state, events }`；不读时间、不读全局随机 |
 | level | `packages/shared/src/level.js` | `parseLevel(json)`、`validateLevel(json)`、`gridToBricks(png)`（离线脚本复用） |
 | save | `packages/shared/src/save.js` | `defaultSave()`、`migrate(raw)`、`serialize(save)`；损坏降级 |
@@ -28,7 +28,7 @@
 
 - 业务层固定 750 设计宽，fit-width：`scale = vw / 750`，运行时 `designH = vh / scale`。
 - 棋盘 21 列 × 28 行，格 34 设计 px，砖块内缩 1.5px 形成缝隙；棋盘尺寸 `714 × 952`，水平居中。
-- 顶部 HUD 高 140，棋盘顶 `y = 160`，底部操作区高 180；宽屏按 `MIN_DESIGN_H = 1334` 回退等比留边。
+- 顶部 HUD 高 140，棋盘顶 `y = 160`；游戏面板从 HUD 下沿通宽铺到设计高度底边（含窄屏出血区），既是可见底衬也是操作区判定范围，棋盘圆角底面叠在其上标示反弹边界；技能槽与提示文字自「底边 − `safeBottom`」向上排布。宽屏按 `MIN_DESIGN_H = 1334` 回退等比留边。
 - 主画布物理分辨率 `canvas.width = screenWidth × pixelRatio`，触摸换算读画布实际尺寸。
 
 ### 物理与确定性
@@ -39,7 +39,7 @@
 - 球数上限 8；达到上限后分裂与额外球不生成。
 - 随机性：`xorshift32`，种子 = 关卡 id + 存档内关卡尝试计数；掉落与分裂方向全部走该 RNG，禁止 `Math.random()`。
 - 球色：蓝=普通（对硬砖 1 伤）；红=强力（对硬砖 2 伤，可直接击碎 1 层）；绿=分裂（命中砖块后分裂出 1 颗蓝球，冷却 0.3s，受上限约束）。
-- 发球：球吸附在挡板中心，点击后以 75° ± 5° 向上发射；同屏多球时每颗独立。
+- 发球：球吸附在挡板中心，在操作区空白处按下即以 75° ± 5° 向上发射；同屏多球时每颗独立。
 
 ### 砖块与关卡
 
@@ -105,6 +105,7 @@
 - `boot`：初始化游戏模块 → 读存档 → 进入 home。
 - `home`：标题 + 继续（最高关）+ 设置；无开始/关卡选择。
 - `play`：HUD（金币、关卡号、清除率、技能槽、暂停）→ 发球 → 局内 → 过关/失败。
+- 触控接管：操作区内按下即接管挡板横向位置，跟随到抬手/取消，越出棋盘与面板边缘不打断；第一根手指独占，其他手指只响应按钮；技能槽与暂停只在按下的那一点判定，优先于接管与发球；抬手后端点留在最后位置；弹窗打开与切后台立即释放接管。
 - `result`：过关结算（金币、下一关按钮）；失败面板（复活/重来）。
 - 暂停：音效/音乐开关、继续、退出到 home。
 
@@ -117,6 +118,7 @@
   - 存档：往返、缺字段、损坏 JSON、版本迁移。
 - 关卡：`scripts/validate-levels.js` 校验 30 关 schema、可破坏砖块数、网格越界。
 - 浏览器核验：`apps/demo/demo1/` 静态页三尺寸截图对照；正式版主页/结算等确定性页面自动点击 + 截图。
+- 操作区与接管：`apps/game/test/render.test.mjs` 断言面板通宽铺到设计底边、控件避让 `safeBottom`；接管语义在浏览器派发真实 PointerEvent，读调试快照 `dragging`/`paddleTarget` 断言跟到屏幕最底、抬手保留、第二指不抢、HUD 空白不动挡板。
 - 动画、手感、音效不做截图验证：产出人工走查清单（微信/抖音真机各一份），按用户回报修复。
 - 构建：三端产物存在 + 体积三行 + 探针 grep。
 

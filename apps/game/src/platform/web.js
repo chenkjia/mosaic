@@ -103,7 +103,7 @@ export function createWebPlatform() {
   function onPointer(handler) {
     const emit = (type) => (event) => {
       const point = clientToDesign(canvas, sys, event.clientX, event.clientY);
-      handler({ type, x: point.x, y: point.y });
+      handler({ type, id: event.pointerId, x: point.x, y: point.y });
     };
     canvas.addEventListener('pointerdown', (event) => {
       event.preventDefault();
@@ -111,7 +111,7 @@ export function createWebPlatform() {
     });
     window.addEventListener('pointermove', emit('move'));
     window.addEventListener('pointerup', emit('end'));
-    window.addEventListener('pointercancel', emit('end'));
+    window.addEventListener('pointercancel', emit('cancel'));
   }
 
   function onHide(handler) {
