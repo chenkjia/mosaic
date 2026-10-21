@@ -1,0 +1,22 @@
+#!/bin/sh
+# 写完即构建：源码暂存即全量构建，失败阻断提交（根 AGENTS.md「构建与产物」）。
+#
+# 新环境启用一次：git config core.hooksPath scripts/git-hooks
+#
+# 本 hook 自动检测 apps/game/package.json 的 build script：
+#   - 有   → 执行构建，失败阻断提交（项目化实现构建脚本后自动生效）
+#   - 无   → 跳过并提示（模板阶段无产物可构建）
+set -u
+
+HAS_BUILD=$(node -e "const p=require('./apps/game/package.json'); process.stdout.write(p.scripts && p.scripts.build ? '1' : '')" 2>/dev/null || true)
+
+if [ -z "$HAS_BUILD" ]; then
+  echo "[pre-commit] apps/game 无 build script，跳过自动构建（项目化时实现并登记 build script）"
+  exit 0
+fi
+
+echo "[pre-commit] 自动构建 apps/game ..."
+pnpm --filter ./apps/game run build || {
+  echo "[pre-commit] 构建失败，提交被阻断" >&2
+  exit 1
+}

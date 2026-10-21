@@ -1,0 +1,6 @@
+{
+  "name": "game",
+  "private": true,
+  "version": "0.1.0",
+  "description": "正式游戏端（原生 Canvas 2D，JS）。version 是全仓版本号单一事实源，构建时注入。"
+}
