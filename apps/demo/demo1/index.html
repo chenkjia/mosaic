@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Mosaic demo1 · 伪 3D 宝石砖块校准</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #1B1230; }
+  #stage { display: block; width: 100vw; height: 100vh; }
+  #badge {
+    position: fixed; right: 14px; top: 14px; padding: 7px 11px;
+    border-radius: 999px; background: rgba(27, 18, 48, 0.72);
+    color: #DDD6FF; font: 500 12px/1.3 "PingFang SC", "Microsoft YaHei", sans-serif;
+    letter-spacing: 0.02em; pointer-events: none; white-space: nowrap;
+  }
+  #spec {
+    position: fixed; left: 14px; top: 14px; max-width: 348px; max-height: 82vh;
+    overflow: auto; border-radius: 14px; background: rgba(255, 250, 253, 0.94);
+    color: #2A2344; font: 400 12px/1.65 "PingFang SC", "Microsoft YaHei", sans-serif;
+    box-shadow: 0 12px 36px rgba(20, 12, 40, 0.28);
+  }
+  #spec summary {
+    padding: 10px 14px; cursor: pointer; font-weight: 700; color: #5B4BC4;
+    list-style: none; user-select: none;
+  }
+  #spec summary::-webkit-details-marker { display: none; }
+  #spec summary::before { content: "▸ "; }
+  #spec[open] summary::before { content: "▾ "; }
+  #spec .body { padding: 0 14px 12px; }
+  #spec p { margin: 0 0 8px; }
+  #spec b { color: #5B4BC4; }
+  #spec a { color: #5B4BC4; }
+  #hint {
+    position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%);
+    padding: 5px 12px; border-radius: 999px;
+    background: rgba(255, 250, 253, 0.78); color: rgba(91, 75, 196, 0.82);
+    font: 500 11px/1.4 "PingFang SC", "Microsoft YaHei", sans-serif;
+    pointer-events: none; white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<details id="spec">
+  <summary>规格 / 验收口径</summary>
+  <div class="body">
+    <p><b>规格</b>：750 设计宽；棋盘 21×28；格 34；砖块内缩 1.5；棋盘 714×952；圆角 7；四态 = 普通 / 硬砖 / 障碍 / 奖励。</p>
+    <p><b>对照基准</b>：马卡龙糖果风；高光在顶部约 1/3，内阴影在底部，投影向下；所有砖色取自 16 色调色板。</p>
+    <p><b>容差</b>：尺寸与坐标 ±0.5 设计 px；色值必须命中调色板；同一格内高光/阴影方向一致；四态在 390×844 下可辨。</p>
+    <p><b>核对项</b>：① 缝隙均匀、无重叠；② 硬砖裂纹 + hp 圆点；③ 障碍斜纹；④ 奖励砖菱形图标；⑤ 网格与实测尺寸一致；⑥ 三视口无溢出、无遮挡。</p>
+    <p><a href="README.md">完整验收口径</a> · 按 G 切网格 · 按 H 收起</p>
+  </div>
+</details>
+<div id="badge">初始化中</div>
+<div id="hint">G 网格 · H 规格 · ?view=390x844 / 768x1024 / 750x1334（file:// 用 #view=）</div>
+<script src="demo1.js"></script>
+</body>
+</html>
