@@ -49,3 +49,4 @@
 - 粒子特效拖累低端设备 → 粒子数量上限 + 低端特效降级。
 - 本地存档损坏 → 统一封装存档模块：读写收口单点、损坏降级重置、异常恢复。
 - 大量零散单图推高包体与开销 → 图集合并压缩，大图延迟按需加载。
+- `pnpm install` 提示 `Ignored build scripts: esbuild` → pnpm 10 默认拦截依赖构建脚本；esbuild 0.28.2 的平台二进制由 optionalDependencies 提供，构建不受影响。换平台或版本后若报找不到二进制，再执行 `pnpm approve-builds` 允许 esbuild 的构建脚本。

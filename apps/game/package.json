@@ -1,6 +1,17 @@
 {
-  "name": "game",
+  "name": "mosaic-game",
   "private": true,
   "version": "0.1.0",
-  "description": "正式游戏端（原生 Canvas 2D，JS）。version 是全仓版本号单一事实源，构建时注入。"
+  "type": "module",
+  "description": "Mosaic 游戏端（原生 Canvas 2D，JS）。version 是全仓版本号单一事实源，构建时注入。",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:web": "node scripts/build.mjs --target web",
+    "build:wechat": "node scripts/build.mjs --target wechat",
+    "build:douyin": "node scripts/build.mjs --target douyin",
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
 }

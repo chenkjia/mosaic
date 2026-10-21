@@ -4,18 +4,17 @@
 
 ## 当前状态
 
-- 设计已通过 grilling 确认（2026-10-21，Q1–Q27）。
-- REQ / spec / tickets 已起草，**代码未开始实施**。
-- 首个待确认门禁：`docs/requirements/REQ-001-mosaic-core.md` + `.scratch/mosaic-core/spec.md`。
+- 设计已通过 grilling 确认（2026-10-21，Q1–Q27）；REQ-001 + spec 已确认。
+- Ticket 01 完成：三端构建、platform adapter、loading → 空主页链路可跑。
+- 下一步：Ticket 02 `apps/demo/demo1/` 伪 3D 宝石砖块校准页。
 
 ## 快速开始
 
 ```bash
-pnpm install
-# demo（零构建，浏览器直开）
-open apps/demo/demo1/index.html
-# 正式端构建（Ticket 01 落地后可用）
-pnpm --filter ./apps/game run build
+corepack pnpm install
+corepack pnpm --filter ./apps/game test
+corepack pnpm --filter ./apps/game run build
+open dist/web/index.html
 ```
 
 ## 流程

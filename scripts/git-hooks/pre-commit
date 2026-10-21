@@ -16,7 +16,11 @@ if [ -z "$HAS_BUILD" ]; then
 fi
 
 echo "[pre-commit] 自动构建 apps/game ..."
-pnpm --filter ./apps/game run build || {
+if command -v pnpm >/dev/null 2>&1; then
+  pnpm --filter ./apps/game run build
+else
+  corepack pnpm --filter ./apps/game run build
+fi || {
   echo "[pre-commit] 构建失败，提交被阻断" >&2
   exit 1
 }

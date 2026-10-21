@@ -36,3 +36,13 @@
 - 用户指令「Git 你也自行操作」：agent 接管 `git add` / `commit` / `push` 与仓库级 `git config`，不再留给用户执行。
 - 已执行 `git config --local core.hooksPath scripts/git-hooks`，pre-commit 自动构建生效（当前 apps/game 无 build script，hook 跳过）。
 - 破坏性操作边界保留：`push --force`、`reset --hard`、删除分支/远程分支仍需先确认。根 `AGENTS.md` 与 README 已同步。
+
+## 2026-10-21 · REQ-001 / Ticket 01 工程骨架与三端 adapter
+
+- Status：Ticket 01 done。
+- 实现：`apps/game/src/platform/`（contract + web/minigame adapter + 750 坐标换算 + KV storage）、boot/loading（主包纯代码）、`pkgGame` 分包空主页、esbuild 三端构建与平台模板。
+- 关键决定：主包入口不 import 游戏代码，分包走运行时 `require('./pkg-game/index.js')`；web 单 bundle，`loadSubpackage` 直接就绪但保留 loading 时间下限；`platform/index.js` 为 contract + 三端工厂出口。
+- 验证：`corepack pnpm install` 通过；`node --test` 10/10；三端构建成功（主包 0.01MB / 分包 0.00MB / 总包 0.02MB）；`dist/web/index.html` 在 `file://` 与 8000 端口均输出 `[game] boot 0.1.0` → `[boot] home 0.1.0`；主包 grep 无主页文案；微信/抖音分包字段大小写正确。
+- 踩坑 1：pnpm 10 拦截 esbuild postinstall，但 0.28.2 的平台二进制经 optionalDependencies 提供，构建正常；已回写 `apps/game/AGENTS.md`。
+- 踩坑 2：pre-commit 直接调用 `pnpm`，本机仅 corepack 提供 pnpm，首次提交被 hook 阻断；hook 改为优先 `pnpm`、缺失时回退 `corepack pnpm`。
+- 下一步：Ticket 02 `apps/demo/demo1/` 伪 3D 宝石砖块校准页，视觉经用户确认后冻结并 port 进游戏。
