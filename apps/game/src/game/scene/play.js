@@ -21,6 +21,7 @@ const BALL_COLORS = {
   green: C.mintDeep,
 };
 const GEM_OPTIONS = { radius: 7, light: C.white, dark: C.ink };
+const TAP_SLOP = 18;
 const LEVEL_BY_ID = new Map();
 for (let i = 0; i < LEVELS.length; i += 1) LEVEL_BY_ID.set(LEVELS[i].id, LEVELS[i]);
 
@@ -115,6 +116,7 @@ export function createPlayScene(deps) {
   let acc = 0;
   let paddleTarget = null;
   let dragId = null;
+  let slotPress = null;
   let launchQueued = false;
   let brickVersion = 0;
   let clearAt = 0;
@@ -142,6 +144,7 @@ export function createPlayScene(deps) {
     acc = 0;
     paddleTarget = sim.paddle.x;
     dragId = null;
+    slotPress = null;
     launchQueued = false;
     brickVersion = 0;
     clearAt = 0;
@@ -312,6 +315,8 @@ export function createPlayScene(deps) {
   function pauseForModal() {
     paused = true;
     acc = 0;
+    dragId = null;
+    slotPress = null;
   }
 
   function openFail() {
@@ -358,7 +363,7 @@ export function createPlayScene(deps) {
       if (ok) {
         const added = addSkillCharge(sim, skill);
         const meta = SKILL_META[skill];
-        toast.show(added.ok ? '技能已补充 · ' + meta.label : '该技能已就绪');
+        toast.show(added.ok ? meta.label + '已补充 · 点击下方释放' : '该技能已就绪');
         audio.play('skill');
       } else {
         toast.show('广告未看完，未获得技能');
@@ -469,7 +474,7 @@ export function createPlayScene(deps) {
           break;
         case 'skillPickup': {
           const meta = SKILL_META[event.skill];
-          toast.show('技能已就绪 · ' + (meta ? meta.label : event.skill));
+          toast.show((meta ? meta.label : event.skill) + '已就绪 · 点击下方释放');
           audio.play('skill');
           break;
         }
@@ -537,6 +542,7 @@ export function createPlayScene(deps) {
     const id = pointerIdOf(event);
     if (modal) {
       dragId = null;
+      slotPress = null;
       if (event.type !== 'start') return;
       const action = hitModal(modal, view, event.x, event.y);
       if (action) handleAction(action);
@@ -551,7 +557,15 @@ export function createPlayScene(deps) {
       }
       const slot = hitSkill(layout, event.x, event.y);
       if (slot >= 0) {
-        useSkill(slot);
+        if (slotPress === null) {
+          slotPress = {
+            id,
+            index: slot,
+            charged: sim.charges[slot] > 0,
+            x: event.x,
+            y: event.y,
+          };
+        }
         return;
       }
       if (dragId !== null) return;
@@ -562,14 +576,35 @@ export function createPlayScene(deps) {
       return;
     }
     if (event.type === 'move') {
+      if (slotPress && id === slotPress.id) {
+        const slot = hitSkill(layout, event.x, event.y);
+        const dx = event.x - slotPress.x;
+        const dy = event.y - slotPress.y;
+        if (slot !== slotPress.index || dx * dx + dy * dy > TAP_SLOP * TAP_SLOP) slotPress = null;
+        return;
+      }
       if (id === dragId) movePaddleTo(event.x);
       return;
     }
+    if (event.type === 'end' && slotPress && id === slotPress.id) {
+      const press = slotPress;
+      slotPress = null;
+      const slot = hitSkill(layout, event.x, event.y);
+      const dx = event.x - press.x;
+      const dy = event.y - press.y;
+      if (slot === press.index && dx * dx + dy * dy <= TAP_SLOP * TAP_SLOP) {
+        const charged = sim.charges[press.index] > 0;
+        if (charged === press.charged) useSkill(press.index);
+        else if (charged) toast.show('技能已就绪 · 点击下方释放');
+      }
+    }
     if (id === dragId) dragId = null;
+    if (slotPress && id === slotPress.id) slotPress = null;
   }
 
   function onHide() {
     dragId = null;
+    slotPress = null;
     if (modal && modal.kind !== 'pause') {
       // 切后台时停掉结算倒计时，回来后让用户自己点下一关。
       if (modal.kind === 'result') modal.autoAt = 0;

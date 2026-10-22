@@ -144,3 +144,17 @@
 - 验证：`corepack pnpm test` 47/47 通过（shared 27 / game 20）；三端构建 web 0.43MB、微信/抖音 0.44MB；`verify:dist` OK。清空存档后浏览器冷启动 `scene=play / levelId=1 / modal=preRound`，按钮仅 `start / extraBall`；四类弹层按钮分别为 `start+extraBall`、`resume+sound+music+share+restart`、`next`、`revive+retry`，均无 home；复活广告后 `reviveUsed=true / phase=ready`，技能补给广告后 `charges[0]=1 / paused=false`；控制台仅 `[game] boot 0.1.0`、`[boot] play 0.1.0`，无 error。
 - 剩余风险：奖励砖掉落与满格提示的真机视觉未人工走查；分享卡片 query 仍不决定进入关卡（与改动前一致）；红/绿球产出入口仍待确认；真机、真实广告位与低端机性能待用户按 `device-checklist.md` 执行。
 - 下一步：用户真机复核奖励砖必掉与无首页启动；确认红/绿球产出来源；配置真实广告位。
+
+## 2026-10-22 · REQ-001 奖励砖扩量分散 + 拾取与释放分离
+
+- 触发：用户要求「奖励砖要多一点，设置要分散一点。一吃到，直接技能就使用掉了。需要在下面点击。下面点击的话是看广告才有的」。
+- 关键决定：奖励砖每关固定 6 块（schema 上限），位置由生成器最远点采样分散，不再使用手工坐标；拾取只把充能存入技能格，不自动释放；必须在底部技能格完成一次点击（按下并抬手、未拖出格）才释放，空格子进入激励视频补给；按下后拖出、位移超 18 设计 px 或按下时未充能均取消。
+- 根因：「一吃到就使用」并非数据层自动激活——`collectDrops` 只调用 `addSkillCharge()`；实际是技能格在 `pointerdown` 立即 `useSkill()`，手指按下/经过技能栏就误触发。奖励少且聚簇则是 30 个美术函数里的 3 块手写坐标。
+- 改动：
+  - `scripts/generate-level-art.js` 新增 `hash2()` 与 `chooseRewards()`（非障碍砖格最远点采样，首块离质心最远，其后最大化到已选格的最近距离，哈希决胜）；`main()` 用生成结果覆盖手工奖励坐标；30 关源图、sidecar 与 `apps/game/src/data/levels.json` 全量重生成。
+  - `apps/game/src/game/scene/play.js` 新增 `TAP_SLOP = 18` 与 `slotPress`：按下只记录状态，抬手仍同格且位移合规才 `useSkill()`；拖出/超限/弹窗/广告/暂停清空；拾取与补给 toast 改为「已就绪/已补充 · 点击下方释放」。
+  - `packages/shared/test/physics.test.mjs` 新增「奖励砖拾取只充能，点击释放才生效」：拾取后 `charges+1`、`effects` 不启动、球数不变，显式 `activateSkill` 后才开始计时。
+- 数据：每关奖励砖 6，合计 180（原 90）；障碍 77、可破坏 6674 不变；同一关最近两块奖励砖相距 5.8–10.8 格。
+- 验证：`corepack pnpm test` 48/48 通过（shared 28 / game 20）；三端构建 web 0.43MB、微信/抖音 0.44MB；`verify:dist` OK。浏览器 `?adMs=0`：预开局显示「奖励砖 6」且截图无聚簇；空槽广告后 `charges[0]=1` 且 `effects` 全 0；点击充能格多球生效（球 1→3）；真实 PointerEvent 按下后拖出 120 px 抬手不消耗，原地点击才释放（球 3→5）；激光击碎奖励砖拾取后仅对应充能 +1、`effects` 只有激光计时，证明拾取不自动释放。
+- 剩余风险：真机手感与 6 块奖励砖的视觉密度待走查；奖励砖具体位置只在数据层验证分散度，逐关美术辨识度仍需人工；红/绿球产出入口仍未确认。
+- 下一步：用户按 `device-checklist.md` 2.8 / 2.9 / 2.20 / 3.3 真机复核；确认红/绿球来源；配置真实广告位。

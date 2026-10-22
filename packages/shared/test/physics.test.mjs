@@ -291,6 +291,38 @@ test('每块奖励砖必掉技能充能，可被挡板拾取', () => {
   assert.equal(state.charges[SKILL_IDS.indexOf(drop.skill)], 1);
 });
 
+test('奖励砖拾取只充能，点击释放才生效', () => {
+  const state = createState(makeLevel([
+    makeBrick(10, 14, 'reward'),
+    makeBrick(18, 2),
+  ]), 1);
+  state.charges[0] = 1;
+  state.charges[1] = 1;
+  state.charges[2] = 1;
+  putBall(state, { x: 357, y: 14 * 34 + 1.5 - 10, vy: 300 });
+  const beforeBalls = state.balls.length;
+  const { events } = step(state, null, DT);
+  assert.ok(events.some((e) => e.type === 'dropSpawn'));
+  const drop = state.drops[0];
+  assert.equal(drop.skill, 'slow');
+  drop.x = state.paddle.x;
+  drop.y = state.paddle.y - state.paddle.h / 2 - 20;
+  let pickupEvents = [];
+  for (let i = 0; i < 40 && state.drops.length > 0; i += 1) {
+    pickupEvents = step(state, null, DT).events;
+  }
+  assert.ok(pickupEvents.some((e) => e.type === 'skillPickup'));
+  assert.equal(state.charges[3], 1);
+  assert.equal(state.effects.slowUntil, 0);
+  assert.equal(state.balls.length, beforeBalls);
+  assert.equal(state.phase, 'playing');
+
+  const used = activateSkill(state, 3);
+  assert.equal(used.ok, true);
+  assert.ok(state.effects.slowUntil > state.time);
+  assert.equal(state.charges[3], 0);
+});
+
 test('四格技能满时奖励砖不再生成掉落物', () => {
   const state = createState(makeLevel([
     makeBrick(10, 14, 'reward'),

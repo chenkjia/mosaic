@@ -903,6 +903,66 @@ function configFor(id) {
   return { count, speed };
 }
 
+// 奖励砖固定在 6 块，用最远点采样摊开：先取离重心最远的一格，再依次取离已选格最远的一格。
+function hash2(id, x, y) {
+  let h = (Math.imul(id, 374761393) + Math.imul(x, 668265263) + Math.imul(y, 2246822519)) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+function chooseRewards(g, obstacles, id) {
+  const blocked = new Set(obstacles.map(([x, y]) => x + ',' + y));
+  const candidates = [];
+  let sumX = 0;
+  let sumY = 0;
+  for (let y = 0; y < H; y += 1) {
+    for (let x = 0; x < W; x += 1) {
+      if (g[y][x] == null || blocked.has(x + ',' + y)) continue;
+      candidates.push({ x, y });
+      sumX += x;
+      sumY += y;
+    }
+  }
+  if (candidates.length <= 6) return candidates.map((cell) => [cell.x, cell.y]);
+  const cx = sumX / candidates.length;
+  const cy = sumY / candidates.length;
+  const chosen = [];
+  const remaining = candidates.slice();
+  let first = 0;
+  let firstScore = -1;
+  for (let i = 0; i < remaining.length; i += 1) {
+    const cell = remaining[i];
+    const score = (cell.x - cx) ** 2 + (cell.y - cy) ** 2 + hash2(id, cell.x, cell.y) * 1e-3;
+    if (score > firstScore) {
+      firstScore = score;
+      first = i;
+    }
+  }
+  chosen.push(remaining.splice(first, 1)[0]);
+  while (chosen.length < 6) {
+    let best = 0;
+    let bestGap = -1;
+    let bestTie = -1;
+    for (let i = 0; i < remaining.length; i += 1) {
+      const cell = remaining[i];
+      let gap = Infinity;
+      for (const pick of chosen) {
+        const dx = cell.x - pick.x;
+        const dy = cell.y - pick.y;
+        gap = Math.min(gap, dx * dx + dy * dy);
+      }
+      const tie = hash2(id + chosen.length * 131, cell.x, cell.y);
+      if (gap > bestGap || (gap === bestGap && tie > bestTie)) {
+        bestGap = gap;
+        bestTie = tie;
+        best = i;
+      }
+    }
+    chosen.push(remaining.splice(best, 1)[0]);
+  }
+  return chosen.map((cell) => [cell.x, cell.y]).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+}
+
 function toRgba(g) {
   const rgba = Buffer.alloc(W * H * 4);
   for (let y = 0; y < H; y += 1) {
@@ -987,9 +1047,11 @@ function main() {
     const def = LEVELS[i];
     const g = grid();
     const result = def.art(g);
+    const rewards = chooseRewards(g, result.obstacles, id);
+    for (const [x, y] of rewards) set(g, x, y, C.gold);
     const all = cells(g);
     if (all.length < 40) throw new Error(def.name + ' 砖块过少: ' + all.length);
-    for (const [x, y] of result.rewards) {
+    for (const [x, y] of rewards) {
       if (g[y][x] == null) throw new Error(def.name + ' 奖励坐标为空: ' + x + ',' + y);
     }
     for (const [x, y] of result.obstacles) {
@@ -1005,7 +1067,7 @@ function main() {
       size: [W, H],
       ball: configFor(id),
       obstacles: result.obstacles,
-      rewards: result.rewards,
+      rewards,
     };
     writeFileSync(path.join(SRC_DIR, base + '.json'), JSON.stringify(meta, null, 2) + '\n');
     const destructible = all.length - result.obstacles.length;
