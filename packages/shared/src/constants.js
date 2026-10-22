@@ -30,8 +30,6 @@ export const STEP = 1 / 120;
 export const MAX_STEPS_PER_FRAME = 8;
 
 export const SKILL_SLOTS = 4;
-export const DEFAULT_SLOT_CAPACITY = 2;
-export const SLOT_EXPAND_COSTS = [0, 0, 200, 500];
 export const SKILL_IDS = ['multiBall', 'widePaddle', 'laser', 'slow'];
 
 export const SKILL = {
@@ -44,10 +42,7 @@ export const SKILL = {
 };
 
 export const RULES = {
-  clearCoins: 20,
-  rewardCoinChance: 0.5,
-  rewardCoinMin: 1,
-  rewardCoinMax: 3,
+  skillDropChance: 0.5,
   launchAngleDeg: 75,
   launchJitterDeg: 5,
   bounceMinDeg: 15,

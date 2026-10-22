@@ -1,4 +1,4 @@
-import { LEVEL_COUNT, PALETTE, slotCost } from '@mosaic/shared';
+import { LEVEL_COUNT, PALETTE } from '@mosaic/shared';
 import { drawGemBrick } from '../../gfx/drawGemBrick.js';
 import { roundRectPath } from '../../gfx/roundRect.js';
 import { drawButton, drawSmallButton, hitRect } from '../../ui/button.js';
@@ -25,15 +25,13 @@ export function createHomeScene(deps) {
     const gridY = 300 + shift;
     const continueRect = { x: 135, y: gridY + gridW + 108, w: 480, h: 96 };
     const rowY = continueRect.y + 116;
-    const slotRect = { x: 135, y: rowY, w: 230, h: 74 };
-    const shareRect = { x: 385, y: rowY, w: 230, h: 74 };
+    const shareRect = { x: 135, y: rowY, w: 480, h: 74 };
     const info = { x: 90, y: rowY + 100, w: 570, h: 150 };
     const soundRect = { x: 135, y: info.y + 178, w: 230, h: 64 };
     const musicRect = { x: 385, y: info.y + 178, w: 230, h: 64 };
     return {
       grid: { x: gridX, y: gridY, tile, gap },
       continueRect,
-      slotRect,
       shareRect,
       info,
       soundRect,
@@ -80,11 +78,10 @@ export function createHomeScene(deps) {
     ctx.stroke();
 
     const columns = [
-      { label: '金币', value: String(save.coins) },
       { label: '最高关', value: save.highestLevel + ' / ' + LEVEL_COUNT },
-      { label: '技能槽', value: save.slotCapacity + ' / 4' },
+      { label: '技能栏', value: '4 格常驻' },
     ];
-    const colW = info.w / 3;
+    const colW = info.w / columns.length;
     for (let i = 0; i < columns.length; i += 1) {
       const cx = info.x + colW * (i + 0.5);
       ctx.textAlign = 'center';
@@ -125,16 +122,6 @@ export function createHomeScene(deps) {
     const starting = save.highestLevel <= 1;
     drawButton(ctx, l.continueRect, starting ? '开始 · 第 1 关' : '继续 · 第 ' + save.highestLevel + ' 关', 'primary');
 
-    const cost = slotCost(save);
-    const maxed = save.slotCapacity >= 4;
-    const affordable = save.coins >= cost;
-    drawSmallButton(
-      ctx,
-      l.slotRect,
-      maxed ? '技能槽已满' : '扩容技能槽 · ' + cost,
-      maxed ? 'disabled' : affordable ? 'violet' : 'ghost',
-      false,
-    );
     drawSmallButton(ctx, l.shareRect, '分享游戏', 'secondary', false);
 
     drawInfo(ctx, l, save);
@@ -159,20 +146,6 @@ export function createHomeScene(deps) {
       onStart(save.highestLevel);
       return;
     }
-    if (hitRect(rects.slotRect, x, y, 4)) {
-      if (save.slotCapacity >= 4) {
-        toast.show('技能槽已满');
-      } else if (save.coins < slotCost(save)) {
-        toast.show('金币不足 · 过关可拿金币');
-      } else {
-        store.update((next) => {
-          next.coins -= slotCost(next);
-          next.slotCapacity += 1;
-        });
-        toast.show('技能槽扩到 ' + store.get().slotCapacity + ' 格');
-      }
-      return;
-    }
     if (hitRect(rects.shareRect, x, y, 4)) {
       onShare().then((ok) => {
         toast.show(ok ? '已调起分享' : '当前环境不支持分享');
@@ -192,7 +165,6 @@ export function createHomeScene(deps) {
     if (!rects) return null;
     return {
       continue: rects.continueRect,
-      slot: rects.slotRect,
       share: rects.shareRect,
       sound: rects.soundRect,
       music: rects.musicRect,

@@ -1,6 +1,6 @@
 import {
-  BALL, BOARD, LEVEL_COUNT, MAX_STEPS_PER_FRAME, RULES, STEP,
-  activateSkill, addBall, clearPercent, createState, revive, step,
+  BOARD, LEVEL_COUNT, MAX_STEPS_PER_FRAME, SKILL_IDS, STEP,
+  activateSkill, addBall, addSkillCharge, clearPercent, createState, revive, step,
 } from '@mosaic/shared';
 import LEVELS from '../../data/levels.json';
 import { createBitmapCache } from '../../gfx/bitmapCache.js';
@@ -15,10 +15,6 @@ import { drawSkillBar, hitSkill } from '../../ui/skillBar.js';
 import { C, FONT, SKILL_META, THEME_LABEL } from '../../ui/theme.js';
 import { createToast } from '../../ui/toast.js';
 
-const HINT_PRE = '看广告可多一颗球';
-const HINT_READY = '拖动挡板 · 点击发球';
-const HINT_PLAY = '点击底部技能槽立即生效';
-const HINT_PAUSED = '已暂停';
 const BALL_COLORS = {
   blue: C.blue,
   red: C.pinkDeep,
@@ -125,17 +121,10 @@ export function createPlayScene(deps) {
   let failAt = 0;
   let failShown = false;
   let settled = false;
-  let resultBase = 0;
-  let doubled = false;
   let extraBallBought = false;
+  let pendingSkill = -1;
   let bgKey = '';
   let background = null;
-
-  function displayCoins() {
-    const base = store.get().coins;
-    if (!sim || settled) return base;
-    return base + sim.coins;
-  }
 
   function levelFor(id) {
     return LEVEL_BY_ID.get(id) || LEVELS[0];
@@ -145,7 +134,7 @@ export function createPlayScene(deps) {
     levelId = clamp(Math.floor(id) || 1, 1, LEVEL_COUNT);
     level = levelFor(levelId);
     info = levelInfo(level);
-    sim = createState(level, undefined, { slotCapacity: store.get().slotCapacity });
+    sim = createState(level, undefined, { failY: layout ? layout.failY : undefined });
     modal = null;
     paused = true;
     adBusy = false;
@@ -159,9 +148,8 @@ export function createPlayScene(deps) {
     failAt = 0;
     failShown = false;
     settled = false;
-    resultBase = 0;
-    doubled = false;
     extraBallBought = false;
+    pendingSkill = -1;
     particles.reset();
     beams.reset();
     toast.clear();
@@ -195,12 +183,16 @@ export function createPlayScene(deps) {
 
   function pauseModal() {
     const save = store.get();
+    let charged = 0;
+    for (let i = 0; i < sim.charges.length; i += 1) {
+      if (sim.charges[i] > 0) charged += 1;
+    }
     return {
       kind: 'pause',
       title: '已暂停',
       subtitle: '第 ' + levelId + ' 关 · 清除 ' + clearPercent(sim) + '%',
       lines: [
-        { text: '金币 ' + displayCoins() + ' · 技能槽 ' + save.slotCapacity + ' / 4', color: C.muted },
+        { text: '技能充能 ' + charged + ' / ' + SKILL_IDS.length, color: C.muted },
       ],
       buttons: [
         { id: 'resume', label: '继续游戏', kind: 'primary' },
@@ -215,28 +207,19 @@ export function createPlayScene(deps) {
   }
 
   function resultModal() {
-    const save = store.get();
     const allDone = levelId >= LEVEL_COUNT;
     return {
       kind: 'result',
       title: allDone ? '全部关卡完成' : '过关！',
       subtitle: '第 ' + levelId + ' 关 · 清除 100%',
       lines: [
-        { text: '本关金币 +' + resultBase, bold: true, color: C.orange },
-        { text: '金币余额 ' + save.coins, color: C.ink },
         {
-          text: doubled ? '双倍奖励已领取' : '看广告再得 ' + resultBase + ' 金币',
-          color: doubled ? C.success : C.muted,
+          text: allDone ? '30 关全部通关' : '下一关 · 第 ' + (levelId + 1) + ' 关',
+          color: C.muted,
         },
       ],
       buttons: [
         { id: 'next', label: allDone ? '再玩一次' : '下一关', kind: 'primary' },
-        {
-          id: 'double',
-          label: doubled ? '已双倍' : '看广告 ×2 金币',
-          kind: doubled ? 'disabled' : 'violet',
-          disabled: doubled,
-        },
         { id: 'home', label: '返回主页', kind: 'ghost' },
       ],
       autoAt: lastNow > 0 ? lastNow + 6500 : 0,
@@ -249,9 +232,9 @@ export function createPlayScene(deps) {
     return {
       kind: 'fail',
       title: '挑战失败',
-      subtitle: '球全部掉出棋盘',
+      subtitle: '球全部越过了失败线',
       lines: [
-        { text: '本关清除 ' + clearPercent(sim) + '% · 金币未结算', color: C.muted },
+        { text: '本关清除 ' + clearPercent(sim) + '%', color: C.muted },
         { text: '复活每关仅一次', color: C.soft },
       ],
       buttons: [
@@ -264,13 +247,32 @@ export function createPlayScene(deps) {
         { id: 'retry', label: '重来一局', kind: 'secondary' },
         { id: 'home', label: '返回主页', kind: 'ghost' },
       ],
-      note: '重来一局会重置本关金币与技能',
+      note: '重来一局会重置本关技能充能',
+    };
+  }
+
+  function chargeModal(index) {
+    const skill = SKILL_IDS[index];
+    const meta = SKILL_META[skill];
+    return {
+      kind: 'skillCharge',
+      title: '补充技能',
+      subtitle: meta.label + ' · ' + meta.tip,
+      lines: [
+        { text: '看一段广告，获得 1 次使用', bold: true, color: C.primary },
+        { text: '广告期间整局暂停', color: C.muted },
+      ],
+      buttons: [
+        { id: 'adSkill', label: '看广告补充', kind: 'mint' },
+        { id: 'cancelSkill', label: '取消', kind: 'ghost' },
+      ],
+      note: '每格最多储存 1 次',
     };
   }
 
   function adModal(placement) {
     const reward = placement === 'revive' ? '复活 +1 球'
-      : placement === 'extraBall' ? '开局 +1 球' : '金币 ×2';
+      : placement === 'extraBall' ? '开局 +1 球' : '补充 1 次技能';
     return {
       kind: 'ad',
       title: '广告播放中',
@@ -309,10 +311,8 @@ export function createPlayScene(deps) {
   function settleClear() {
     if (settled) return;
     settled = true;
-    resultBase = RULES.clearCoins + sim.coins;
     const next = Math.min(LEVEL_COUNT, levelId + 1);
     store.update((save) => {
-      save.coins += resultBase;
       if (next > save.highestLevel) save.highestLevel = next;
     });
     pauseForModal();
@@ -360,20 +360,34 @@ export function createPlayScene(deps) {
     });
   }
 
-  function watchDouble() {
-    if (doubled || adBusy) return Promise.resolve(false);
-    return runAd('doubleCoins').then((ok) => {
-      if (ok && !doubled) {
-        doubled = true;
-        store.update((save) => { save.coins += resultBase; });
-        toast.show('金币翻倍 +' + resultBase);
-      } else if (!ok) {
-        toast.show('广告未看完，金币未翻倍');
+  function watchSkillCharge() {
+    if (pendingSkill < 0 || adBusy) return Promise.resolve(false);
+    const index = pendingSkill;
+    const skill = SKILL_IDS[index];
+    return runAd('skillCharge').then((ok) => {
+      if (ok) {
+        const added = addSkillCharge(sim, skill);
+        const meta = SKILL_META[skill];
+        toast.show(added.ok ? '技能已补充 · ' + meta.label : '该技能已就绪');
+        audio.play('skill');
+      } else {
+        toast.show('广告未看完，未获得技能');
       }
-      lastNow = lastNow || 1;
-      modal = resultModal();
+      pendingSkill = -1;
+      modal = null;
+      paused = false;
+      acc = 0;
+      lastNow = 0;
       return ok;
     });
+  }
+
+  function cancelSkillCharge() {
+    pendingSkill = -1;
+    modal = null;
+    paused = false;
+    acc = 0;
+    lastNow = 0;
   }
 
   function watchRevive() {
@@ -420,8 +434,10 @@ export function createPlayScene(deps) {
       });
     } else if (id === 'next') {
       nextLevel();
-    } else if (id === 'double') {
-      watchDouble();
+    } else if (id === 'adSkill') {
+      watchSkillCharge();
+    } else if (id === 'cancelSkill') {
+      cancelSkillCharge();
     } else if (id === 'revive') {
       watchRevive();
     } else if (id === 'retry') {
@@ -463,18 +479,14 @@ export function createPlayScene(deps) {
           break;
         case 'wallHit':
           break;
-        case 'coinPickup':
-          toast.show('金币 +' + event.amount);
-          audio.play('coin');
-          break;
         case 'skillPickup': {
           const meta = SKILL_META[event.skill];
-          toast.show('获得技能 · ' + (meta ? meta.label : event.skill));
+          toast.show('技能已就绪 · ' + (meta ? meta.label : event.skill));
           audio.play('skill');
           break;
         }
         case 'skillFull':
-          toast.show('技能槽已满');
+          toast.show('该技能已就绪');
           break;
         case 'skillUsed': {
           const meta = SKILL_META[event.skill];
@@ -502,20 +514,19 @@ export function createPlayScene(deps) {
   }
 
   function useSkill(index) {
-    if (index >= sim.slotCapacity) {
-      toast.show('技能槽未解锁 · 主页可扩容');
+    if (!sim || sim.phase === 'cleared' || sim.phase === 'failed') return;
+    if (sim.charges[index] > 0) {
+      const result = activateSkill(sim, index);
+      if (!result.ok) return;
+      handleEvents(result.events);
+      const meta = SKILL_META[result.skill];
+      toast.show('已使用 · ' + (meta ? meta.label : result.skill));
+      audio.play('skill');
       return;
     }
-    if (!sim.slots[index]) {
-      toast.show('这个技能槽是空的');
-      return;
-    }
-    const result = activateSkill(sim, index);
-    if (!result.ok) return;
-    handleEvents(result.events);
-    const meta = SKILL_META[result.skill];
-    toast.show('已使用 · ' + (meta ? meta.label : result.skill));
-    audio.play('skill');
+    pendingSkill = index;
+    pauseForModal();
+    modal = chargeModal(index);
   }
 
   function pointerIdOf(event) {
@@ -703,40 +714,24 @@ export function createPlayScene(deps) {
       ctx.beginPath();
       ctx.arc(x + 1, y + 3, drop.r, 0, Math.PI * 2);
       ctx.fill();
-      if (drop.kind === 'coin') {
-        ctx.fillStyle = C.gold;
-        ctx.beginPath();
-        ctx.arc(x, y, drop.r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = C.yellow;
-        ctx.beginPath();
-        ctx.arc(x, y, drop.r - 3.4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = C.gold;
-        ctx.font = FONT.tinyBold;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('C', x, y + 1);
-      } else {
-        const meta = SKILL_META[drop.skill] || SKILL_META.multiBall;
-        const r = drop.r + 3;
-        ctx.beginPath();
-        ctx.moveTo(x, y - r);
-        ctx.lineTo(x + r, y);
-        ctx.lineTo(x, y + r);
-        ctx.lineTo(x - r, y);
-        ctx.closePath();
-        ctx.fillStyle = meta.color;
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.72)';
-        ctx.lineWidth = 1.4;
-        ctx.stroke();
-        ctx.fillStyle = C.white;
-        ctx.font = FONT.slot;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(meta.short, x, y + 1);
-      }
+      const meta = SKILL_META[drop.skill] || SKILL_META.multiBall;
+      const r = drop.r + 3;
+      ctx.beginPath();
+      ctx.moveTo(x, y - r);
+      ctx.lineTo(x + r, y);
+      ctx.lineTo(x, y + r);
+      ctx.lineTo(x - r, y);
+      ctx.closePath();
+      ctx.fillStyle = meta.color;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.72)';
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+      ctx.fillStyle = C.white;
+      ctx.font = FONT.slot;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(meta.short, x, y + 1);
     }
   }
 
@@ -812,23 +807,11 @@ export function createPlayScene(deps) {
     ctx.fill();
   }
 
-  function drawHint(ctx, now) {
-    if (toast.isActive(now)) return;
-    let hint = HINT_PLAY;
-    if (modal && modal.kind === 'preRound') hint = HINT_PRE;
-    else if (modal && modal.kind === 'pause') hint = HINT_PAUSED;
-    else if (sim.phase === 'ready') hint = HINT_READY;
-    ctx.fillStyle = C.muted;
-    ctx.font = FONT.small;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(hint, 375, layout.hintY);
-  }
-
   function draw(ctx, v, now) {
     view = v;
     layout = computePlayLayout(v);
     if (!sim) start(levelId);
+    sim.failY = layout.failY;
     tick(now);
 
     drawBackground(ctx, v);
@@ -843,16 +826,12 @@ export function createPlayScene(deps) {
 
     drawHud(ctx, layout, {
       levelId,
-      levelCount: LEVEL_COUNT,
-      theme: level.theme,
       percent: clearPercent(sim),
       left: sim.stats.left,
       total: sim.stats.total,
-      coins: displayCoins(),
     });
     drawSkillBar(ctx, layout, sim, now);
-    drawHint(ctx, now);
-    toast.draw(ctx, v, now, v.h - 12);
+    toast.draw(ctx, v, now, Math.min(v.h - 12, layout.skill.y - 16));
     if (modal) drawModal(ctx, v, modal, now);
   }
 
@@ -867,14 +846,12 @@ export function createPlayScene(deps) {
       modal: modal ? modal.kind : null,
       adBusy,
       settled,
-      doubled,
       extraBallBought,
-      coins: displayCoins(),
-      levelCoins: sim.coins,
-      savedCoins: store.get().coins,
+      chargingSkill: pendingSkill,
       highestLevel: store.get().highestLevel,
-      slotCapacity: sim.slotCapacity,
-      slots: sim.slots.slice(),
+      failY: sim.failY,
+      charges: sim.charges.slice(),
+      skills: SKILL_IDS.slice(),
       balls: sim.balls.length,
       ballKinds: sim.balls.map((ball) => ball.kind),
       paddleX: sim.paddle.x,
@@ -896,7 +873,6 @@ export function createPlayScene(deps) {
         slow: Math.max(0, sim.effects.slowUntil - sim.time),
       },
       cacheBuilds: cache.stats().builds,
-      resultBase,
     };
   }
 
@@ -907,6 +883,7 @@ export function createPlayScene(deps) {
       panel: layout.panel,
       operation: layout.operation,
       dividerY: layout.dividerY,
+      failY: layout.failY,
       pause: layout.pause,
       skills: layout.skill.slots,
       modal: modal ? modalLayout(modal, view) : null,
@@ -929,6 +906,10 @@ export function createPlayScene(deps) {
     }
     if (modal.kind === 'pause') {
       resume();
+      return true;
+    }
+    if (modal.kind === 'skillCharge') {
+      cancelSkillCharge();
       return true;
     }
     return false;
@@ -972,6 +953,14 @@ export function createPlayScene(deps) {
     return true;
   }
 
+  function debugSetCharges(values) {
+    if (!sim || !Array.isArray(values)) return false;
+    for (let i = 0; i < sim.charges.length; i += 1) {
+      sim.charges[i] = values[i] ? 1 : 0;
+    }
+    return sim.charges.slice();
+  }
+
   return {
     start,
     draw,
@@ -984,5 +973,6 @@ export function createPlayScene(deps) {
     debugForceClear,
     debugForceFail,
     debugUseSkill,
+    debugSetCharges,
   };
 }

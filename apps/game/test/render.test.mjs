@@ -47,6 +47,8 @@ function makeCtx() {
     save: () => {},
     restore: () => {},
     clip: () => {},
+    translate: record,
+    scale: record,
     drawImage: record,
   };
   return ctx;
@@ -62,14 +64,33 @@ test('局内布局在所有设计高度内坐标合法', () => {
   for (const h of [1334, 1400, 1624, 1900]) {
     const view = { w: 750, h, bleed: { x: 0, y: 0, w: 750, h } };
     const layout = computePlayLayout(view);
-    assert.equal(layout.board.x + layout.board.w <= 750, true);
+    assert.equal(layout.board.x + layout.board.w, 732);
     assert.ok(layout.board.y + layout.board.h < layout.skill.y);
+    assert.equal(layout.skill.slots.length, 4);
     for (const slot of layout.skill.slots) {
       assert.ok(slot.x >= 0 && slot.x + slot.w <= 750);
       assert.ok(slot.y + slot.h < view.h);
     }
-    assert.ok(layout.hintY < view.h);
+    assert.ok(layout.dividerY < view.h);
+    assert.equal(layout.failY, layout.dividerY - layout.board.y);
   }
+});
+
+test('四格技能栏等宽铺满棋盘宽，失败线等于技能栏上沿', () => {
+  const view = { w: 750, h: 1624, bleed: { x: 0, y: 0, w: 750, h: 1624 } };
+  const layout = computePlayLayout(view);
+  assert.equal(layout.dividerY, layout.skill.y);
+  assert.equal(layout.failY, layout.dividerY - layout.board.y);
+  assert.equal(layout.skill.slots[0].x, layout.board.x);
+  const last = layout.skill.slots[3];
+  assert.equal(last.x + last.w, layout.board.x + layout.board.w);
+  for (const slot of layout.skill.slots) {
+    assert.equal(slot.w, 165);
+    assert.equal(slot.h, 112);
+  }
+  assert.equal(layout.pause.x, 24);
+  assert.equal(layout.level.x, 108);
+  assert.equal('coin' in layout, false);
 });
 
 test('游戏面板与棋盘同宽并铺到屏幕最底', () => {
@@ -84,7 +105,8 @@ test('游戏面板与棋盘同宽并铺到屏幕最底', () => {
     assert.equal(layout.panel.w, layout.board.w);
     assert.equal(layout.panel.y, layout.hud.h);
     assert.equal(layout.panel.y + layout.panel.h, bleedBottom);
-    assert.equal(layout.dividerY, layout.board.y + layout.board.h);
+    assert.equal(layout.dividerY, layout.skill.y);
+    assert.equal(layout.failY, layout.skill.y - layout.board.y);
     assert.equal(layout.operation.x, view.bleed.x);
     assert.equal(layout.operation.w, view.bleed.w);
     assert.equal(layout.operation.y, layout.hud.h);
@@ -101,11 +123,10 @@ test('卡片贴底时控件避让安全区', () => {
       const limit = h - safeBottom;
       assert.equal(layout.panel.y + layout.panel.h, h);
       assert.ok(layout.board.y + layout.board.h < layout.skill.y);
-      assert.ok(layout.dividerY <= layout.skill.y);
+      assert.equal(layout.dividerY, layout.skill.y);
       for (const slot of layout.skill.slots) {
-        assert.ok(slot.y + slot.h <= limit, '技能槽底边越入安全区: h=' + h + ' safe=' + safeBottom);
+        assert.ok(slot.y + slot.h <= limit, '技能格底边越入安全区: h=' + h + ' safe=' + safeBottom);
       }
-      assert.ok(layout.hintY < h);
     }
   }
 });
@@ -125,55 +146,52 @@ test('宝石砖四态绘制坐标均为有限值', () => {
   }
 });
 
-test('HUD 与技能槽绘制坐标均为有限值', () => {
+test('HUD 与四格技能栏绘制坐标均为有限值', () => {
   const view = { w: 750, h: 1334, bleed: { x: 0, y: 0, w: 750, h: 1334 } };
   const layout = computePlayLayout(view);
   const ctx = makeCtx();
   drawHud(ctx, layout, {
     levelId: 7,
-    levelCount: 30,
-    theme: 'animals',
     percent: 42,
     left: 80,
     total: 140,
-    coins: 123,
   });
   const sim = {
     time: 100,
-    slots: ['multiBall', 'laser', 'slow', null],
-    slotCapacity: 3,
+    charges: [1, 0, 1, 1],
     effects: { wideUntil: 110, laserUntil: 0, slowUntil: 105 },
   };
   drawSkillBar(ctx, layout, sim, 1000);
   assertFinite(ctx, 'hud+skill');
+  assert.ok(ctx.texts.includes('第 7 关'));
   assert.ok(ctx.texts.includes('CLEARED'));
   assert.ok(ctx.texts.includes('42%'));
+  assert.ok(ctx.texts.includes('点击释放'));
+  assert.ok(ctx.texts.includes('看广告'));
+  assert.equal(ctx.texts.includes('金币'), false);
 });
 
 test('弹层布局与绘制坐标均为有限值', () => {
   const view = { w: 750, h: 1334, bleed: { x: 0, y: 0, w: 750, h: 1334 } };
   const modal = {
-    kind: 'result',
-    title: '过关！',
-    subtitle: '第 1 关 · 清除 100%',
-    lines: [{ text: '本关金币 +20', bold: true }],
+    kind: 'skillCharge',
+    title: '补充技能',
+    subtitle: '分裂球 · 点击释放',
+    lines: [{ text: '看一段广告，获得 1 次使用', bold: true }],
     buttons: [
-      { id: 'next', label: '下一关', kind: 'primary' },
-      { id: 'double', label: '看广告 ×2 金币', kind: 'violet' },
-      { id: 'home', label: '返回主页', kind: 'ghost' },
+      { id: 'adSkill', label: '看广告补充', kind: 'mint' },
+      { id: 'cancelSkill', label: '取消', kind: 'ghost' },
     ],
-    autoAt: 2000,
-    autoLabel: '自动进入下一关',
-    note: '最高关已更新',
+    note: '每格最多储存 1 次',
   };
   const layout = modalLayout(modal, view);
   assert.ok(layout.card.y >= 0);
   assert.ok(layout.card.y + layout.card.h <= view.h);
-  assert.equal(layout.buttons.length, 3);
+  assert.equal(layout.buttons.length, 2);
   assert.ok(layout.buttons.every((btn) => btn.x >= layout.card.x && btn.x + btn.w <= layout.card.x + layout.card.w));
 
   const ctx = makeCtx();
   drawModal(ctx, view, modal, 1500);
   assertFinite(ctx, 'modal');
-  assert.ok(ctx.texts.includes('过关！'));
+  assert.ok(ctx.texts.includes('补充技能'));
 });

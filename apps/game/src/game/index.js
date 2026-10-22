@@ -81,15 +81,9 @@ export function createGameApp(platform) {
         rects: play.debugRects(),
       });
     },
-    setCoins(value) {
-      const amount = Math.max(0, Math.floor(Number(value) || 0));
-      store.update((save) => { save.coins = amount; });
-      return store.get().coins;
-    },
-    addCoins(value) {
-      const amount = Math.floor(Number(value) || 0);
-      store.update((save) => { save.coins = Math.max(0, save.coins + amount); });
-      return store.get().coins;
+    setCharges(values) {
+      if (scene !== 'play') return false;
+      return play.debugSetCharges(values);
     },
     startLevel(id) {
       openLevel(id);

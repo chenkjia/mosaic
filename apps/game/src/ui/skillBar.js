@@ -1,6 +1,12 @@
-import { SLOT_EXPAND_COSTS } from '@mosaic/shared';
+import { SKILL_IDS } from '@mosaic/shared';
 import { roundRectPath } from '../gfx/roundRect.js';
-import { C, EFFECT_META, FONT, SKILL_META } from './theme.js';
+import { C, FONT, SKILL_META } from './theme.js';
+
+const ACTIVE_KEY = {
+  widePaddle: 'wideUntil',
+  laser: 'laserUntil',
+  slow: 'slowUntil',
+};
 
 function drawIcon(ctx, skill, cx, cy, color) {
   ctx.fillStyle = color;
@@ -50,15 +56,50 @@ function drawIcon(ctx, skill, cx, cy, color) {
   }
 }
 
-function drawLock(ctx, cx, cy) {
-  ctx.strokeStyle = C.soft;
-  ctx.fillStyle = C.soft;
-  ctx.lineWidth = 3;
+function drawPlayGlyph(ctx, cx, cy, color) {
+  ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.arc(cx, cy - 4, 7, Math.PI, 0);
-  ctx.stroke();
-  roundRectPath(ctx, cx - 10, cy - 3, 20, 15, 4);
+  ctx.moveTo(cx - 4, cy - 6);
+  ctx.lineTo(cx + 6, cy);
+  ctx.lineTo(cx - 4, cy + 6);
+  ctx.closePath();
   ctx.fill();
+}
+
+function drawStatusPill(ctx, rect, fill, color, label, showPlay) {
+  const w = showPlay ? 100 : 96;
+  const h = 24;
+  const x = rect.x + (rect.w - w) / 2;
+  const y = rect.y + 82;
+  ctx.fillStyle = fill;
+  roundRectPath(ctx, x, y, w, h, h / 2);
+  ctx.fill();
+
+  ctx.fillStyle = color;
+  ctx.font = FONT.tinyBold;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (showPlay) {
+    drawPlayGlyph(ctx, x + 22, y + h / 2, color);
+    ctx.fillText(label, x + 58, y + h / 2 + 1);
+  } else {
+    ctx.fillText(label, x + w / 2, y + h / 2 + 1);
+  }
+}
+
+function drawTimer(ctx, rect, remain) {
+  const w = 46;
+  const h = 22;
+  const x = rect.x + rect.w - w - 8;
+  const y = rect.y + 8;
+  ctx.fillStyle = 'rgba(42,35,68,0.58)';
+  roundRectPath(ctx, x, y, w, h, h / 2);
+  ctx.fill();
+  ctx.fillStyle = C.white;
+  ctx.font = FONT.tinyBold;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(Math.ceil(remain) + 's', x + w / 2, y + h / 2 + 1);
 }
 
 export function drawSkillBar(ctx, layout, sim, now) {
@@ -66,83 +107,58 @@ export function drawSkillBar(ctx, layout, sim, now) {
   ctx.textBaseline = 'middle';
   for (let i = 0; i < layout.skill.slots.length; i += 1) {
     const rect = layout.skill.slots[i];
-    const filled = i < sim.slotCapacity ? sim.slots[i] : null;
-    const locked = i >= sim.slotCapacity;
+    const skill = SKILL_IDS[i];
+    const meta = SKILL_META[skill];
+    const charged = sim.charges[i] > 0;
 
-    if (locked) {
-      ctx.fillStyle = 'rgba(255,255,255,0.38)';
-    } else if (filled) {
-      ctx.fillStyle = SKILL_META[filled].color;
+    if (charged) {
+      ctx.fillStyle = meta.color;
     } else {
-      ctx.fillStyle = 'rgba(255,255,255,0.60)';
+      ctx.fillStyle = 'rgba(255,255,255,0.64)';
     }
     roundRectPath(ctx, rect.x, rect.y, rect.w, rect.h, 20);
     ctx.fill();
 
-    if (filled) {
+    if (charged) {
       ctx.save();
       roundRectPath(ctx, rect.x, rect.y, rect.w, rect.h, 20);
       ctx.clip();
-      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      ctx.fillStyle = 'rgba(255,255,255,0.20)';
       ctx.fillRect(rect.x, rect.y, rect.w, rect.h * 0.46);
       ctx.restore();
     }
 
-    ctx.strokeStyle = filled
-      ? 'rgba(255,255,255,0.36)'
-      : locked ? 'rgba(91,75,196,0.12)' : 'rgba(91,75,196,0.20)';
+    ctx.strokeStyle = charged ? 'rgba(255,255,255,0.40)' : 'rgba(91,75,196,0.22)';
     ctx.lineWidth = 1.4;
     roundRectPath(ctx, rect.x, rect.y, rect.w, rect.h, 20);
     ctx.stroke();
 
-    if (locked) {
-      drawLock(ctx, rect.x + rect.w / 2, rect.y + 30);
-      ctx.fillStyle = C.soft;
-      ctx.font = FONT.slot;
-      const cost = SLOT_EXPAND_COSTS[i] || 0;
-      ctx.fillText(cost > 0 ? cost + ' 金币' : '未解锁', rect.x + rect.w / 2, rect.y + 64);
-    } else if (filled) {
-      const meta = SKILL_META[filled];
-      drawIcon(ctx, filled, rect.x + rect.w / 2, rect.y + 30, C.white);
-      ctx.fillStyle = 'rgba(255,255,255,0.96)';
-      ctx.font = FONT.slot;
-      ctx.fillText(meta.label, rect.x + rect.w / 2, rect.y + 64);
+    const cx = rect.x + rect.w / 2;
+    ctx.save();
+    if (!charged) ctx.globalAlpha = 0.58;
+    ctx.translate(cx, rect.y + 32);
+    ctx.scale(1.22, 1.22);
+    drawIcon(ctx, skill, 0, 0, charged ? C.white : meta.color);
+    ctx.restore();
+
+    ctx.fillStyle = charged ? C.white : C.muted;
+    ctx.font = FONT.h3;
+    ctx.fillText(meta.label, cx, rect.y + 66);
+
+    if (charged) {
+      drawStatusPill(ctx, rect, 'rgba(255,255,255,0.22)', C.white, '点击释放', false);
     } else {
-      ctx.fillStyle = C.soft;
-      ctx.font = FONT.numberSmall;
-      ctx.fillText('+', rect.x + rect.w / 2, rect.y + 33);
-      ctx.font = FONT.tiny;
-      ctx.fillText('空槽', rect.x + rect.w / 2, rect.y + 62);
+      const pulse = 0.78 + 0.22 * Math.sin(now / 380);
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      drawStatusPill(ctx, rect, 'rgba(91,75,196,0.10)', C.primary, '看广告', true);
+      ctx.restore();
     }
-  }
 
-  const active = [];
-  if (sim.time < sim.effects.wideUntil) {
-    active.push({ key: 'wide', remain: sim.effects.wideUntil - sim.time });
-  }
-  if (sim.time < sim.effects.laserUntil) {
-    active.push({ key: 'laser', remain: sim.effects.laserUntil - sim.time });
-  }
-  if (sim.time < sim.effects.slowUntil) {
-    active.push({ key: 'slow', remain: sim.effects.slowUntil - sim.time });
-  }
-  if (active.length === 0) return;
-
-  const chipW = 150;
-  const chipH = 30;
-  const gap = 10;
-  const totalW = active.length * chipW + (active.length - 1) * gap;
-  let x = (750 - totalW) / 2;
-  const y = layout.effectY;
-  for (let i = 0; i < active.length; i += 1) {
-    const meta = EFFECT_META[active[i].key];
-    ctx.fillStyle = meta.color;
-    roundRectPath(ctx, x, y, chipW, chipH, chipH / 2);
-    ctx.fill();
-    ctx.fillStyle = C.white;
-    ctx.font = FONT.tinyBold;
-    ctx.fillText(meta.label + ' ' + Math.ceil(active[i].remain) + 's', x + chipW / 2, y + chipH / 2 + 1);
-    x += chipW + gap;
+    const key = ACTIVE_KEY[skill];
+    if (key && sim.time < sim.effects[key]) {
+      drawTimer(ctx, rect, sim.effects[key] - sim.time);
+    }
   }
 }
 

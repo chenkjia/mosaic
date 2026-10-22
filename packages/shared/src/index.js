@@ -1,6 +1,6 @@
 export {
   BOARD, BALL, PADDLE, STEP, MAX_STEPS_PER_FRAME, SKILL, RULES,
-  SKILL_IDS, SKILL_SLOTS, SLOT_EXPAND_COSTS, DEFAULT_SLOT_CAPACITY,
+  SKILL_IDS, SKILL_SLOTS,
   DESIGN_WIDTH, MIN_DESIGN_H, LEVEL_COUNT, THEMES,
 } from './constants.js';
 export { PALETTE, PALETTE_RGB, hexToRgb, isHexColor, nearestPaletteIndex } from './palette.js';
@@ -10,10 +10,10 @@ export {
   gridToBricks, quantizeGrid,
 } from './level.js';
 export {
-  createState, step, addBall, revive, activateSkill, expandSlot, slotExpandCost,
-  clearPercent, hashState, addCoinsToState,
+  createState, step, addBall, revive, activateSkill, addSkillCharge,
+  clearPercent, hashState,
 } from './physics.js';
 export {
   SAVE_KEY, defaultSave, migrate, migrateWithStatus, serialize,
-  loadSave, persistSave, grantCoins, slotCost, buySlot,
+  loadSave, persistSave,
 } from './save.js';

@@ -1,5 +1,5 @@
 import {
-  BALL, BOARD, PADDLE, RULES, SKILL, SKILL_IDS, SKILL_SLOTS, DEFAULT_SLOT_CAPACITY, SLOT_EXPAND_COSTS,
+  BALL, BOARD, PADDLE, RULES, SKILL, SKILL_IDS, SKILL_SLOTS,
 } from './constants.js';
 import { chance, createRng, nextFloat, nextInt, nextRange } from './rng.js';
 import { countDestructible, parseLevel } from './level.js';
@@ -29,6 +29,7 @@ export function createState(levelInput, seed, options) {
     seed: rngSeed || 1,
     phase: 'ready',
     time: 0,
+    failY: Math.max(BOARD.h, finite(opts.failY, BOARD.h)),
     board: { w: BOARD.w, h: BOARD.h, cell: BOARD.cell, inset: BOARD.inset, cols: BOARD.cols, rows: BOARD.rows },
     palette: level.palette.slice(),
     levelSpeed: level.ball.speed,
@@ -42,10 +43,8 @@ export function createState(levelInput, seed, options) {
       baseW: PADDLE.w,
     },
     drops: [],
-    slots: new Array(SKILL_SLOTS).fill(null),
-    slotCapacity: clamp(opts.slotCapacity == null ? DEFAULT_SLOT_CAPACITY : opts.slotCapacity, 2, SKILL_SLOTS),
+    charges: new Array(SKILL_SLOTS).fill(0),
     effects: { wideUntil: 0, laserUntil: 0, laserNext: 0, slowUntil: 0 },
-    coins: 0,
     reviveUsed: false,
     rng: createRng(rngSeed),
     nextId: 1,
@@ -125,23 +124,21 @@ export function revive(state) {
   return true;
 }
 
-export function expandSlot(state) {
-  if (state.slotCapacity >= SKILL_SLOTS) return false;
-  state.slotCapacity += 1;
-  return true;
-}
-
-export function slotExpandCost(state) {
-  return SLOT_EXPAND_COSTS[state.slotCapacity] || 0;
+export function addSkillCharge(state, skill) {
+  const index = SKILL_IDS.indexOf(skill);
+  if (index < 0) return { ok: false, full: false, index: -1 };
+  if (state.charges[index] > 0) return { ok: false, full: true, index };
+  state.charges[index] = 1;
+  return { ok: true, full: false, index };
 }
 
 export function activateSkill(state, index) {
-  if (!Number.isInteger(index) || index < 0 || index >= state.slotCapacity) {
+  if (!Number.isInteger(index) || index < 0 || index >= SKILL_SLOTS) {
     return { ok: false, skill: null, events: [] };
   }
-  const skill = state.slots[index];
-  if (!skill) return { ok: false, skill: null, events: [] };
-  state.slots[index] = null;
+  const skill = SKILL_IDS[index];
+  if (state.charges[index] <= 0) return { ok: false, skill, events: [] };
+  state.charges[index] = 0;
   const events = [{ type: 'skillUsed', skill, slot: index }];
 
   if (skill === 'multiBall') {
@@ -317,34 +314,26 @@ function damageBrick(state, brick, amount, events) {
 }
 
 function spawnRewardDrop(state, center, events) {
-  let drop;
-  if (chance(state.rng, RULES.rewardCoinChance)) {
-    drop = {
-      id: state.nextId,
-      x: center.x,
-      y: center.y,
-      vy: RULES.dropSpeed,
-      r: RULES.dropRadius,
-      kind: 'coin',
-      amount: nextInt(state.rng, RULES.rewardCoinMin, RULES.rewardCoinMax),
-      skill: null,
-    };
-  } else {
-    const skill = SKILL_IDS[nextInt(state.rng, 0, SKILL_IDS.length - 1)];
-    drop = {
-      id: state.nextId,
-      x: center.x,
-      y: center.y,
-      vy: RULES.dropSpeed,
-      r: RULES.dropRadius,
-      kind: 'skill',
-      amount: 0,
-      skill,
-    };
+  if (!chance(state.rng, RULES.skillDropChance)) return;
+  const available = [];
+  for (let i = 0; i < SKILL_SLOTS; i += 1) {
+    if (state.charges[i] <= 0) available.push(i);
   }
+  if (available.length === 0) return;
+  const skill = SKILL_IDS[available[nextInt(state.rng, 0, available.length - 1)]];
+  const drop = {
+    id: state.nextId,
+    x: center.x,
+    y: center.y,
+    vy: RULES.dropSpeed,
+    r: RULES.dropRadius,
+    kind: 'skill',
+    amount: 0,
+    skill,
+  };
   state.nextId += 1;
   state.drops.push(drop);
-  events.push({ type: 'dropSpawn', dropId: drop.id, kind: drop.kind, skill: drop.skill, amount: drop.amount });
+  events.push({ type: 'dropSpawn', dropId: drop.id, kind: drop.kind, skill: drop.skill, amount: 0 });
 }
 
 function splitGreenBall(state, ball, events) {
@@ -452,25 +441,13 @@ function collectDrops(state, events, delta) {
     if (drop.y + drop.r >= line && drop.y - drop.r <= paddle.y + paddle.h / 2
       && Math.abs(drop.x - paddle.x) <= half + drop.r) {
       state.drops.splice(i, 1);
-      if (drop.kind === 'coin') {
-        state.coins += drop.amount;
-        events.push({ type: 'coinPickup', amount: drop.amount, total: state.coins });
+      const added = addSkillCharge(state, drop.skill);
+      if (added.ok) {
+        events.push({ type: 'skillPickup', skill: drop.skill, slot: added.index });
       } else {
-        let slot = -1;
-        for (let s = 0; s < state.slotCapacity; s += 1) {
-          if (!state.slots[s]) {
-            slot = s;
-            break;
-          }
-        }
-        if (slot >= 0) {
-          state.slots[slot] = drop.skill;
-          events.push({ type: 'skillPickup', skill: drop.skill, slot });
-        } else {
-          events.push({ type: 'skillFull', skill: drop.skill });
-        }
+        events.push({ type: 'skillFull', skill: drop.skill });
       }
-    } else if (drop.y - drop.r > BOARD.h) {
+    } else if (drop.y + drop.r > state.failY) {
       state.drops.splice(i, 1);
       events.push({ type: 'dropLost', dropId: drop.id });
     }
@@ -542,7 +519,7 @@ export function step(state, input, dt) {
 
   for (let i = state.balls.length - 1; i >= 0; i -= 1) {
     const ball = state.balls[i];
-    if (!ball.docked && ball.y - ball.r > BOARD.h) {
+    if (!ball.docked && ball.y + ball.r > state.failY) {
       state.balls.splice(i, 1);
       events.push({ type: 'ballLost', ballId: ball.id });
     }
@@ -576,10 +553,4 @@ export function hashState(state) {
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
   return hash >>> 0;
-}
-
-export function addCoinsToState(state, amount) {
-  if (!Number.isFinite(amount) || amount <= 0) return state.coins;
-  state.coins += Math.floor(amount);
-  return state.coins;
 }

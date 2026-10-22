@@ -5,5 +5,5 @@ export const AD_UNIT_ID = '';
 export const AD_UNIT_IDS = {
   revive: '',
   extraBall: '',
-  doubleCoins: '',
+  skillCharge: '',
 };

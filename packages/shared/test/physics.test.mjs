@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  BOARD, BALL, PADDLE, SKILL, clearPercent, createState, hashState, step,
-  activateSkill, addBall, revive, expandSlot, slotExpandCost,
+  BOARD, BALL, PADDLE, SKILL, SKILL_IDS, clearPercent, createState, hashState, step,
+  activateSkill, addBall, revive, addSkillCharge,
 } from '../src/index.js';
 import { cellBrick, makeBrick, makeLevel, putBall } from './helpers.mjs';
 
@@ -13,14 +13,15 @@ function singleBrickLevel(type, hp) {
 }
 
 test('createState 规格与坐标有限', () => {
-  const state = createState(makeLevel([makeBrick(5, 5)]), 42, { slotCapacity: 3 });
+  const state = createState(makeLevel([makeBrick(5, 5)]), 42);
   assert.equal(state.board.w, BOARD.w);
   assert.equal(state.board.h, BOARD.h);
   assert.equal(state.paddle.w, PADDLE.w);
   assert.equal(state.paddle.y, BOARD.h - PADDLE.bottomGap);
   assert.equal(state.phase, 'ready');
+  assert.equal(state.failY, BOARD.h);
   assert.equal(state.stats.total, 1);
-  assert.equal(state.slotCapacity, 3);
+  assert.deepEqual(state.charges, [0, 0, 0, 0]);
   assert.equal(state.balls.length, 1);
   assert.equal(state.balls[0].docked, true);
   const brick = state.bricks[0];
@@ -143,7 +144,7 @@ test('球数上限 8：分裂与额外球不再生成', () => {
   assert.equal(state.balls.length, BALL.cap);
   assert.equal(addBall(state, 'blue', false), null);
 
-  state.slots[0] = 'multiBall';
+  state.charges[0] = 1;
   const result = activateSkill(state, 0);
   assert.equal(result.ok, true);
   assert.equal(state.balls.length, BALL.cap);
@@ -209,21 +210,38 @@ test('球全部掉落 → failed，复活每关一次', () => {
   assert.equal(revive(state), false);
 });
 
+test('自定义失败线：球落到失败线以下才丢失', () => {
+  const failY = BOARD.h + 160;
+  const state = createState(makeLevel([makeBrick(20, 0)]), 1, { failY });
+  assert.equal(state.failY, failY);
+  putBall(state, { x: 300, y: BOARD.h + 10, vy: 400 });
+  let lost = false;
+  let events = step(state, null, DT).events;
+  assert.ok(!events.some((e) => e.type === 'ballLost'));
+  for (let i = 0; i < 80 && !lost; i += 1) {
+    events = step(state, null, DT).events;
+    lost = events.some((e) => e.type === 'ballLost');
+  }
+  assert.equal(lost, true);
+  assert.equal(state.phase, 'failed');
+});
+
 test('技能：多球、加宽刷新、激光、减速', () => {
   const multi = createState(makeLevel([makeBrick(20, 0)]), 1);
-  multi.slots[0] = 'multiBall';
+  multi.charges[0] = 1;
   const before = multi.balls.length;
   assert.equal(activateSkill(multi, 0).ok, true);
   assert.equal(multi.balls.length, before + 2);
-  assert.equal(multi.slots[0], null);
+  assert.equal(multi.charges[0], 0);
+  assert.equal(activateSkill(multi, 0).ok, false);
 
   const wide = createState(makeLevel([makeBrick(20, 0)]), 1);
-  wide.slots[0] = 'widePaddle';
-  wide.slots[1] = 'widePaddle';
-  activateSkill(wide, 0);
+  wide.charges[1] = 1;
+  activateSkill(wide, 1);
   assert.equal(wide.paddle.w, PADDLE.w * PADDLE.wideScale);
   assert.equal(wide.effects.wideUntil, SKILL.wideDuration);
   wide.time = 10;
+  wide.charges[1] = 1;
   activateSkill(wide, 1);
   assert.equal(wide.effects.wideUntil, 10 + SKILL.wideDuration);
   wide.time = 26;
@@ -231,9 +249,9 @@ test('技能：多球、加宽刷新、激光、减速', () => {
   assert.equal(wide.paddle.w, PADDLE.w);
 
   const laser = createState(makeLevel([makeBrick(10, 10, 'hard')]), 1);
-  laser.slots[0] = 'laser';
+  laser.charges[2] = 1;
   putBall(laser, { x: 300, y: 500, vx: 0, vy: -10 });
-  activateSkill(laser, 0);
+  activateSkill(laser, 2);
   let events = step(laser, null, DT).events;
   assert.ok(events.some((e) => e.type === 'laserFire'));
   assert.equal(cellBrick(laser, 10, 10).hp, 1);
@@ -252,7 +270,7 @@ test('技能：多球、加宽刷新、激光、减速', () => {
   assert.ok(Math.abs(slow.balls[0].x - (100 + 600 * SKILL.slowScale)) < 1.5);
 });
 
-test('奖励砖掉落可被挡板拾取，金币/技能进入状态', () => {
+test('奖励砖掉落可被挡板拾取并充能对应技能', () => {
   let found = null;
   for (let seed = 1; seed < 80 && !found; seed += 1) {
     const state = createState(makeLevel([
@@ -267,21 +285,26 @@ test('奖励砖掉落可被挡板拾取，金币/技能进入状态', () => {
   assert.ok(found, '80 个种子内应至少出现一次奖励掉落');
   assert.equal(found.state.drops.length, 1);
   const drop = found.state.drops[0];
+  assert.equal(drop.kind, 'skill');
   drop.x = found.state.paddle.x;
   drop.y = found.state.paddle.y - found.state.paddle.h / 2 - 20;
   let events = [];
   for (let i = 0; i < 40 && found.state.drops.length > 0; i += 1) {
     events = step(found.state, null, DT).events;
   }
-  assert.ok(events.some((e) => e.type === 'coinPickup' || e.type === 'skillPickup'));
+  assert.ok(events.some((e) => e.type === 'skillPickup'));
+  assert.equal(found.state.charges[SKILL_IDS.indexOf(drop.skill)], 1);
 });
 
-test('expandSlot 容量与费用', () => {
+test('技能充能每格最多 1 次，释放后清零', () => {
   const state = createState(makeLevel([makeBrick(20, 0)]), 1);
-  assert.equal(state.slotCapacity, 2);
-  assert.equal(slotExpandCost(state), 200);
-  assert.equal(expandSlot(state), true);
-  assert.equal(slotExpandCost(state), 500);
-  assert.equal(expandSlot(state), true);
-  assert.equal(expandSlot(state), false);
+  assert.equal(addSkillCharge(state, 'multiBall').ok, true);
+  assert.equal(state.charges[SKILL_IDS.indexOf('multiBall')], 1);
+  const full = addSkillCharge(state, 'multiBall');
+  assert.equal(full.ok, false);
+  assert.equal(full.full, true);
+  assert.equal(activateSkill(state, 0).ok, true);
+  assert.equal(state.charges[0], 0);
+  assert.equal(addSkillCharge(state, 'multiBall').ok, true);
+  assert.equal(addSkillCharge(state, 'unknown').ok, false);
 });
