@@ -14,6 +14,11 @@ const STRIPE = 'rgba(255,255,255,0.30)';
 const HP_DOT = 'rgba(42,35,68,0.58)';
 const REWARD_FILL = 'rgba(255,255,255,0.96)';
 const REWARD_SPARK = 'rgba(255,255,255,0.92)';
+const DEBUFF_STYLE = {
+  shrink: { color: '#FF9A5C' },
+  speed: { color: '#D9547A' },
+  reverse: { color: '#8B7FE8' },
+};
 
 function drawCracks(ctx, x, y, size, hp) {
   ctx.strokeStyle = CRACK;
@@ -70,6 +75,67 @@ function drawReward(ctx, x, y, size) {
   ctx.stroke();
 }
 
+function drawDebuff(ctx, x, y, size, kind) {
+  const style = DEBUFF_STYLE[kind] || DEBUFF_STYLE.shrink;
+  ctx.save();
+  ctx.globalAlpha = 0.20;
+  ctx.fillStyle = style.color;
+  ctx.fillRect(x, y, size, size);
+  ctx.restore();
+
+  const cx = x + size / 2;
+  const cy = y + size / 2;
+  const r = Math.max(7, size * 0.24);
+  roundRectPath(ctx, cx - r, cy - r, r * 2, r * 2, r * 0.42);
+  ctx.fillStyle = style.color;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.90)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  const s = r * 0.62;
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.lineWidth = Math.max(1.4, size * 0.055);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  if (kind === 'speed') {
+    for (let i = 0; i < 2; i += 1) {
+      const ox = cx + (i - 0.5) * s * 0.9;
+      ctx.beginPath();
+      ctx.moveTo(ox - s * 0.4, cy - s * 0.62);
+      ctx.lineTo(ox + s * 0.28, cy);
+      ctx.lineTo(ox - s * 0.4, cy + s * 0.62);
+      ctx.stroke();
+    }
+  } else if (kind === 'reverse') {
+    ctx.beginPath();
+    ctx.arc(cx, cy + s * 0.1, s * 0.72, Math.PI * 0.25, Math.PI * 1.65);
+    ctx.stroke();
+    const ax = cx + Math.cos(Math.PI * 1.65) * s * 0.72;
+    const ay = cy + s * 0.1 + Math.sin(Math.PI * 1.65) * s * 0.72;
+    ctx.beginPath();
+    ctx.moveTo(ax - s * 0.34, ay - s * 0.12);
+    ctx.lineTo(ax, ay + s * 0.1);
+    ctx.lineTo(ax + s * 0.3, ay - s * 0.18);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(cx - s, cy - s * 0.6);
+    ctx.lineTo(cx - s * 0.25, cy - s * 0.1);
+    ctx.lineTo(cx - s, cy + s * 0.4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx + s, cy - s * 0.6);
+    ctx.lineTo(cx + s * 0.25, cy - s * 0.1);
+    ctx.lineTo(cx + s, cy + s * 0.4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillRect(cx - s * 0.9, cy + s * 0.55, s * 1.8, s * 0.34);
+  }
+}
+
 // 冻结自 apps/demo/demo1：底色 → 顶部高光 → 底部内阴影 → 圆角描边 → 投影。
 export function drawGemBrick(ctx, x, y, size, brick, palette, options) {
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(size) || size <= 0) return;
@@ -112,6 +178,7 @@ export function drawGemBrick(ctx, x, y, size, brick, palette, options) {
   if (brick.type === 'obstacle') drawStripes(ctx, x, y, size);
   if (brick.type === 'hard') drawCracks(ctx, x, y, size, brick.hp);
   if (brick.type === 'reward') drawReward(ctx, x, y, size);
+  if (brick.type === 'debuff') drawDebuff(ctx, x, y, size, brick.debuff);
 
   ctx.restore();
 

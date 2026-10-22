@@ -1,6 +1,6 @@
 import {
   BOARD, LEVEL_COUNT, MAX_STEPS_PER_FRAME, SKILL_IDS, STEP,
-  activateSkill, addBall, addSkillCharge, clearPercent, createState, revive, step,
+  activateSkill, addBall, addSkillCharge, clearPercent, createState, revive, step, triggerDebuff,
 } from '@mosaic/shared';
 import LEVELS from '../../data/levels.json';
 import { createBitmapCache } from '../../gfx/bitmapCache.js';
@@ -9,10 +9,11 @@ import { createParticles } from '../../gfx/particles.js';
 import { roundRectPath } from '../../gfx/roundRect.js';
 import { computePlayLayout } from '../layout.js';
 import { hitRect } from '../../ui/button.js';
+import { activeDebuffs, drawDebuffBar } from '../../ui/debuffBar.js';
 import { drawHud } from '../../ui/hud.js';
 import { drawModal, hitModal, modalLayout } from '../../ui/modal.js';
 import { drawSkillBar, hitSkill } from '../../ui/skillBar.js';
-import { C, FONT, SKILL_META, THEME_LABEL } from '../../ui/theme.js';
+import { C, EFFECT_META, FONT, SKILL_META, THEME_LABEL } from '../../ui/theme.js';
 import { createToast } from '../../ui/toast.js';
 
 const BALL_COLORS = {
@@ -30,84 +31,28 @@ function clamp(value, min, max) {
 }
 
 function levelInfo(level) {
-  const info = { hard: 0, reward: 0, total: 0 };
+  const info = { hard: 0, reward: 0, debuff: 0, total: 0 };
   for (let i = 0; i < level.bricks.length; i += 1) {
     const type = level.bricks[i].type;
     if (type === 'hard') info.hard += 1;
     if (type === 'reward') info.reward += 1;
+    if (type === 'debuff') info.debuff += 1;
     if (type !== 'obstacle') info.total += 1;
   }
   return info;
-}
-
-function createBeams() {
-  const items = [];
-  for (let i = 0; i < 6; i += 1) {
-    items.push({ life: 0, max: 0.22, x1: 0, y1: 0, x2: 0, y2: 0 });
-  }
-  let cursor = 0;
-
-  function spawn(x1, y1, x2, y2) {
-    const beam = items[cursor];
-    cursor = (cursor + 1) % items.length;
-    beam.x1 = x1;
-    beam.y1 = y1;
-    beam.x2 = x2;
-    beam.y2 = y2;
-    beam.max = 0.22;
-    beam.life = 0.22;
-  }
-
-  function update(dt) {
-    for (let i = 0; i < items.length; i += 1) {
-      if (items[i].life > 0) items[i].life -= dt;
-    }
-  }
-
-  function draw(ctx) {
-    ctx.save();
-    ctx.lineCap = 'round';
-    for (let i = 0; i < items.length; i += 1) {
-      const beam = items[i];
-      if (beam.life <= 0) continue;
-      const alpha = Math.max(0, beam.life / beam.max);
-      ctx.globalAlpha = alpha * 0.85;
-      ctx.strokeStyle = C.violet;
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(BOARD.x + beam.x1, BOARD.y + beam.y1);
-      ctx.lineTo(BOARD.x + beam.x2, BOARD.y + beam.y2);
-      ctx.stroke();
-      ctx.globalAlpha = alpha;
-      ctx.strokeStyle = C.white;
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.moveTo(BOARD.x + beam.x1, BOARD.y + beam.y1);
-      ctx.lineTo(BOARD.x + beam.x2, BOARD.y + beam.y2);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  function reset() {
-    for (let i = 0; i < items.length; i += 1) items[i].life = 0;
-  }
-
-  return { spawn, update, draw, reset };
 }
 
 export function createPlayScene(deps) {
   const { platform, store, audio, onShare } = deps;
   const toast = createToast();
   const particles = createParticles();
-  const beams = createBeams();
   const cache = createBitmapCache(platform);
 
   let view = null;
   let layout = null;
   let level = null;
   let levelId = 1;
-  let info = { hard: 0, reward: 0, total: 0 };
+  let info = { hard: 0, reward: 0, debuff: 0, total: 0 };
   let sim = null;
   let modal = null;
   let paused = true;
@@ -154,7 +99,6 @@ export function createPlayScene(deps) {
     extraBallBought = false;
     pendingSkill = -1;
     particles.reset();
-    beams.reset();
     toast.clear();
     cache.clear();
     modal = preRoundModal();
@@ -167,8 +111,8 @@ export function createPlayScene(deps) {
       title: '第 ' + levelId + ' 关',
       subtitle: (THEME_LABEL[level.theme] || level.theme) + ' · ' + level.ball.count + ' 颗球 · 球速 ' + step,
       lines: [
-        { text: '硬砖 ' + info.hard + ' · 奖励砖 ' + info.reward + ' · 可破坏 ' + info.total },
-        { text: '挡板跟手，点击棋盘发球', color: C.muted },
+        { text: '硬砖 ' + info.hard + ' · 奖励砖 ' + info.reward + ' · 减益砖 ' + info.debuff },
+        { text: '可破坏 ' + info.total + ' · 挡板跟手，点击棋盘发球', color: C.muted },
       ],
       buttons: [
         { id: 'start', label: '开始', kind: 'primary' },
@@ -491,9 +435,16 @@ export function createPlayScene(deps) {
           if (ball) spawnAt(ball.x, ball.y, BALL_COLORS[ball.kind] || C.white, 6, 0.9);
           break;
         }
-        case 'laserFire':
-          beams.spawn(sim.paddle.x, sim.paddle.y - sim.paddle.h / 2, event.x, event.y);
+        case 'splitBlocked':
+          toast.show('球数已满 · ' + event.count + ' 颗未分裂');
           break;
+        case 'debuffTriggered': {
+          const meta = EFFECT_META[event.debuff];
+          toast.show((meta ? meta.label : event.debuff) + ' ' + Math.round(event.duration) + ' 秒');
+          spawnAt(event.x, event.y, meta ? meta.color : C.danger, 12, 1.1);
+          audio.play('debuff');
+          break;
+        }
         case 'levelClear':
           clearAt = lastNow + 520;
           break;
@@ -510,10 +461,16 @@ export function createPlayScene(deps) {
     if (!sim || sim.phase === 'cleared' || sim.phase === 'failed') return;
     if (sim.charges[index] > 0) {
       const result = activateSkill(sim, index);
-      if (!result.ok) return;
+      if (!result.ok) {
+        if (result.reason === 'noMovingBall') toast.show('没有运动中的球');
+        return;
+      }
       handleEvents(result.events);
-      const meta = SKILL_META[result.skill];
-      toast.show('已使用 · ' + (meta ? meta.label : result.skill));
+      const blocked = result.events.some((event) => event.type === 'splitBlocked');
+      if (!blocked) {
+        const meta = SKILL_META[result.skill];
+        toast.show('已使用 · ' + (meta ? meta.label : result.skill));
+      }
       audio.play('skill');
       return;
     }
@@ -652,7 +609,6 @@ export function createPlayScene(deps) {
     }
 
     particles.update(dt);
-    beams.update(dt);
 
     if (sim.phase === 'cleared' && !settled && clearAt > 0 && now >= clearAt) {
       settleClear();
@@ -803,12 +759,15 @@ export function createPlayScene(deps) {
     const x = BOARD.x + paddle.x;
     const y = BOARD.y + paddle.y;
     const wide = sim.time < sim.effects.wideUntil;
+    const shrink = sim.time < sim.effects.shrinkUntil;
+    const reverse = sim.time < sim.effects.reverseUntil;
+    const tint = shrink ? C.orange : reverse ? C.violet : wide ? C.blue : C.lavender;
 
     ctx.fillStyle = 'rgba(42,35,68,0.18)';
     roundRectPath(ctx, x - w / 2, y - h / 2 + 4, w, h, h / 2);
     ctx.fill();
 
-    ctx.fillStyle = wide ? C.blue : C.lavender;
+    ctx.fillStyle = tint;
     roundRectPath(ctx, x - w / 2, y - h / 2, w, h, h / 2);
     ctx.fill();
 
@@ -819,8 +778,8 @@ export function createPlayScene(deps) {
     ctx.fillRect(x - w / 2, y - h / 2, w, h * 0.46);
     ctx.restore();
 
-    ctx.strokeStyle = wide ? 'rgba(90,169,240,0.85)' : 'rgba(91,75,196,0.30)';
-    ctx.lineWidth = wide ? 2.4 : 1.4;
+    ctx.strokeStyle = tint;
+    ctx.lineWidth = wide || shrink || reverse ? 2.4 : 1.4;
     roundRectPath(ctx, x - w / 2, y - h / 2, w, h, h / 2);
     ctx.stroke();
 
@@ -842,7 +801,6 @@ export function createPlayScene(deps) {
     drawBoard(ctx);
     drawDivider(ctx);
     drawDrops(ctx);
-    beams.draw(ctx);
     drawBalls(ctx);
     drawPaddle(ctx);
     particles.draw(ctx);
@@ -854,7 +812,10 @@ export function createPlayScene(deps) {
       total: sim.stats.total,
     });
     drawSkillBar(ctx, layout, sim, now);
-    toast.draw(ctx, v, now, Math.min(v.h - 12, layout.skill.y - 16));
+    const debuffs = activeDebuffs(sim);
+    drawDebuffBar(ctx, layout, debuffs);
+    const toastY = Math.min(v.h - 12, layout.skill.y - (debuffs.length ? 54 : 16));
+    toast.draw(ctx, v, now, toastY);
     if (modal) drawModal(ctx, v, modal, now);
   }
 
@@ -889,11 +850,14 @@ export function createPlayScene(deps) {
       percent: clearPercent(sim),
       left: sim.stats.left,
       total: sim.stats.total,
+      debuffs: info.debuff,
       reviveUsed: sim.reviveUsed,
       effects: {
         wide: Math.max(0, sim.effects.wideUntil - sim.time),
-        laser: Math.max(0, sim.effects.laserUntil - sim.time),
         slow: Math.max(0, sim.effects.slowUntil - sim.time),
+        shrink: Math.max(0, sim.effects.shrinkUntil - sim.time),
+        speed: Math.max(0, sim.effects.speedUntil - sim.time),
+        reverse: Math.max(0, sim.effects.reverseUntil - sim.time),
       },
       cacheBuilds: cache.stats().builds,
     };
@@ -976,6 +940,17 @@ export function createPlayScene(deps) {
     return true;
   }
 
+  function debugTriggerDebuff(kind) {
+    if (!sim) return null;
+    const event = triggerDebuff(sim, kind);
+    if (event) {
+      event.x = sim.paddle.x;
+      event.y = sim.paddle.y - sim.paddle.h / 2;
+      handleEvents([event]);
+    }
+    return event;
+  }
+
   function debugSetCharges(values) {
     if (!sim || !Array.isArray(values)) return false;
     for (let i = 0; i < sim.charges.length; i += 1) {
@@ -996,6 +971,7 @@ export function createPlayScene(deps) {
     debugForceClear,
     debugForceFail,
     debugUseSkill,
+    debugTriggerDebuff,
     debugSetCharges,
   };
 }

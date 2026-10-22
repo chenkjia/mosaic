@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PALETTE } from '../packages/shared/src/palette.js';
 import { quantizeGrid, validateLevel } from '../packages/shared/src/level.js';
-import { BOARD } from '../packages/shared/src/constants.js';
+import { BOARD, DEBUFF_IDS } from '../packages/shared/src/constants.js';
 import { decodePng } from './lib/png.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -30,20 +30,30 @@ function buildLevel(meta, png) {
   const grid = quantizeGrid(png.rgba, png.width, png.height, PALETTE);
   const obstacleSet = new Set((meta.obstacles || []).map(([x, y]) => x + ',' + y));
   const rewardSet = new Set((meta.rewards || []).map(([x, y]) => x + ',' + y));
+  const debuffMap = new Map();
+  for (const entry of meta.debuffs || []) {
+    const [x, y, kind] = entry;
+    const key = x + ',' + y;
+    if (!DEBUFF_IDS.includes(kind)) throw new Error(meta.name + ' 减益类型非法: ' + kind);
+    debuffMap.set(key, kind);
+  }
 
-  for (const key of obstacleSet) {
-    if (rewardSet.has(key)) throw new Error(meta.name + ' 障碍与奖励坐标重叠: ' + key);
+  const specials = new Set([...obstacleSet, ...rewardSet, ...debuffMap.keys()]);
+  if (specials.size !== obstacleSet.size + rewardSet.size + debuffMap.size) {
+    throw new Error(meta.name + ' 障碍/奖励/减益坐标重叠');
+  }
+  for (const key of specials) {
     const [x, y] = key.split(',').map(Number);
-    if (grid[y] == null || grid[y][x] == null) throw new Error(meta.name + ' 障碍坐标为空: ' + key);
+    if (grid[y] == null || grid[y][x] == null) throw new Error(meta.name + ' 特殊砖坐标为空: ' + key);
   }
-  for (const key of rewardSet) {
-    const [x, y] = key.split(',').map(Number);
-    if (grid[y] == null || grid[y][x] == null) throw new Error(meta.name + ' 奖励坐标为空: ' + key);
-  }
-  if (rewardSet.size < 1 || rewardSet.size > 6) {
-    throw new Error(meta.name + ' 奖励砖数量必须在 1..6');
-  }
+  if (rewardSet.size !== 6) throw new Error(meta.name + ' 奖励砖必须正好 6 块');
   if (obstacleSet.size > 8) throw new Error(meta.name + ' 障碍砖数量不能超过 8');
+  if (debuffMap.size > 4) throw new Error(meta.name + ' 减益砖数量不能超过 4');
+  for (let y = BOARD.rows - 3; y < BOARD.rows; y += 1) {
+    if ((grid[y] || []).some((color) => color != null)) {
+      throw new Error(meta.name + ' 底三行必须为空（挡板活动区）');
+    }
+  }
 
   const candidates = [];
   let destructible = 0;
@@ -52,8 +62,8 @@ function buildLevel(meta, png) {
       const color = grid[y][x];
       if (color == null) continue;
       const key = x + ',' + y;
-      if (obstacleSet.has(key)) continue;
-      destructible += 1;
+      if (!obstacleSet.has(key)) destructible += 1;
+      if (specials.has(key)) continue;
       const edge = isEdge(grid, x, y, png.width, png.height) ? 1 : 0;
       const dark = color === 2 || color === 4 ? 1 : 0;
       const score = edge * 0.36 + dark * 0.24 + hash2(meta.id, x, y) * 0.4;
@@ -65,15 +75,13 @@ function buildLevel(meta, png) {
   // 难度随关卡递增：硬砖占比 6% → 36%，每 4 块硬砖出现 1 块 hp3。
   const ratio = 0.06 + ((meta.id - 1) / 29) * 0.3;
   const hardTarget = Math.min(
-    destructible - rewardSet.size,
+    destructible - rewardSet.size - debuffMap.size,
     Math.max(1, Math.round(destructible * ratio)),
   );
   candidates.sort((a, b) => b.score - a.score || a.y - b.y || a.x - b.x);
   const hardSet = new Map();
-  for (let i = 0; i < hardTarget; i += 1) {
-    const cell = candidates[i];
-    if (rewardSet.has(cell.key)) continue;
-    hardSet.set(cell.key, i % 4 === 3 ? 3 : 2);
+  for (let i = 0; i < candidates.length && hardSet.size < hardTarget; i += 1) {
+    hardSet.set(candidates[i].key, hardSet.size % 4 === 3 ? 3 : 2);
   }
 
   const bricks = [];
@@ -84,16 +92,20 @@ function buildLevel(meta, png) {
       const key = x + ',' + y;
       let type = 'normal';
       let hp = 1;
+      let debuff = null;
       if (obstacleSet.has(key)) {
         type = 'obstacle';
         hp = 0;
       } else if (rewardSet.has(key)) {
         type = 'reward';
+      } else if (debuffMap.has(key)) {
+        type = 'debuff';
+        debuff = debuffMap.get(key);
       } else if (hardSet.has(key)) {
         type = 'hard';
         hp = hardSet.get(key);
       }
-      bricks.push({ x, y, type, color, hp });
+      bricks.push({ x, y, type, color, hp, debuff });
     }
   }
 
@@ -114,6 +126,7 @@ function buildLevel(meta, png) {
     destructible,
     hard: bricks.filter((brick) => brick.type === 'hard').length,
     rewards: bricks.filter((brick) => brick.type === 'reward').length,
+    debuffs: bricks.filter((brick) => brick.type === 'debuff').length,
     obstacles: bricks.filter((brick) => brick.type === 'obstacle').length,
     bricks: bricks.length,
   };
@@ -138,6 +151,7 @@ function main() {
       + ' · destructible ' + String(stats.destructible).padStart(3)
       + ' · hard ' + String(stats.hard).padStart(3)
       + ' · reward ' + stats.rewards
+      + ' · debuff ' + stats.debuffs
       + ' · obstacle ' + stats.obstacles
       + ' · balls ' + level.ball.count + ' · speed ' + level.ball.speed);
   }

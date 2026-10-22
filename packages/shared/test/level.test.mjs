@@ -45,13 +45,42 @@ test('gridToBricks 跳过透明格并支持装饰', () => {
     [5, null, 5],
   ];
   const bricks = gridToBricks(grid, {
-    decorate: (x, y) => (x === 2 && y === 0 ? { type: 'hard', hp: 3 } : null),
+    decorate: (x, y) => {
+      if (x === 2 && y === 0) return { type: 'hard', hp: 3 };
+      if (x === 0 && y === 1) return { type: 'debuff', debuff: 'speed' };
+      return null;
+    },
   });
   assert.equal(bricks.length, 4);
   assert.equal(bricks[0].color, 3);
   assert.equal(bricks[1].type, 'hard');
   assert.equal(bricks[1].hp, 3);
+  assert.equal(bricks[2].type, 'debuff');
+  assert.equal(bricks[2].debuff, 'speed');
+  assert.equal(bricks[2].hp, 1);
   assert.equal(countDestructible(bricks), 4);
+});
+
+test('减益砖：解析类型、hp 固定为 1 且可被识别', () => {
+  const parsed = parseLevel({
+    id: 8,
+    bricks: [
+      { x: 1, y: 1, type: 'debuff', debuff: 'reverse', color: 2 },
+      { x: 2, y: 1, type: 'normal' },
+    ],
+  });
+  assert.equal(parsed.bricks[0].type, 'debuff');
+  assert.equal(parsed.bricks[0].debuff, 'reverse');
+  assert.equal(parsed.bricks[0].hp, 1);
+  assert.equal(parsed.bricks[1].debuff, null);
+  assert.equal(countDestructible(parsed.bricks), 2);
+});
+
+test('减益砖校验：未知减益类型与 hp 非 1 被拒绝', () => {
+  const unknown = makeLevel([makeBrick(1, 1, 'debuff', 1, 0, 'laser')]);
+  assert.equal(validateLevel(unknown).ok, false);
+  const wrongHp = makeLevel([makeBrick(1, 1, 'debuff', 2, 0, 'shrink')]);
+  assert.equal(validateLevel(wrongHp).ok, false);
 });
 
 test('quantizeGrid 将 RGBA 映射到最近调色板并保留透明', () => {

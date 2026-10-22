@@ -1,6 +1,6 @@
 import { PALETTE } from '../src/index.js';
 
-export function makeBrick(x, y, type, hp, color) {
+export function makeBrick(x, y, type, hp, color, debuff) {
   const kind = type || 'normal';
   let health = hp;
   if (health == null) {
@@ -8,7 +8,14 @@ export function makeBrick(x, y, type, hp, color) {
     else if (kind === 'obstacle') health = 0;
     else health = 1;
   }
-  return { x, y, type: kind, hp: health, color: color == null ? 5 : color };
+  return {
+    x,
+    y,
+    type: kind,
+    hp: health,
+    color: color == null ? 5 : color,
+    debuff: kind === 'debuff' ? (debuff || 'shrink') : null,
+  };
 }
 
 export function makeLevel(bricks, overrides) {

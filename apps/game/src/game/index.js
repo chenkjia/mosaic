@@ -70,6 +70,9 @@ export function createGameApp(platform) {
     useSkill(index) {
       return play.debugUseSkill(index);
     },
+    triggerDebuff(kind) {
+      return play.debugTriggerDebuff(kind);
+    },
     click(x, y) {
       onPointer({ type: 'start', id: 'debug', x, y });
       onPointer({ type: 'end', id: 'debug', x, y });

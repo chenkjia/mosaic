@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { PALETTE } from '@mosaic/shared';
 import { computePlayLayout } from '../src/game/layout.js';
 import { drawGemBrick } from '../src/gfx/drawGemBrick.js';
+import { activeDebuffs, drawDebuffBar } from '../src/ui/debuffBar.js';
 import { drawHud } from '../src/ui/hud.js';
 import { drawSkillBar } from '../src/ui/skillBar.js';
 import { drawModal, modalLayout } from '../src/ui/modal.js';
@@ -131,18 +132,21 @@ test('卡片贴底时控件避让安全区', () => {
   }
 });
 
-test('宝石砖四态绘制坐标均为有限值', () => {
+test('宝石砖各状态绘制坐标均为有限值', () => {
   const cases = [
     { type: 'normal', hp: 1, color: 5 },
     { type: 'hard', hp: 2, color: 7 },
     { type: 'hard', hp: 3, color: 8 },
     { type: 'obstacle', hp: 0, color: 2 },
     { type: 'reward', hp: 1, color: 9 },
+    { type: 'debuff', hp: 1, color: 4, debuff: 'shrink' },
+    { type: 'debuff', hp: 1, color: 4, debuff: 'speed' },
+    { type: 'debuff', hp: 1, color: 4, debuff: 'reverse' },
   ];
   for (const brick of cases) {
     const ctx = makeCtx();
     drawGemBrick(ctx, 10.5, 20.5, 31, brick, PALETTE, { radius: 7 });
-    assertFinite(ctx, brick.type);
+    assertFinite(ctx, brick.type + ':' + (brick.debuff || ''));
   }
 });
 
@@ -159,7 +163,7 @@ test('HUD 与四格技能栏绘制坐标均为有限值', () => {
   const sim = {
     time: 100,
     charges: [1, 0, 1, 1],
-    effects: { wideUntil: 110, laserUntil: 0, slowUntil: 105 },
+    effects: { wideUntil: 110, slowUntil: 105, shrinkUntil: 0, speedUntil: 0, reverseUntil: 0 },
   };
   drawSkillBar(ctx, layout, sim, 1000);
   assertFinite(ctx, 'hud+skill');
@@ -168,7 +172,27 @@ test('HUD 与四格技能栏绘制坐标均为有限值', () => {
   assert.ok(ctx.texts.includes('42%'));
   assert.ok(ctx.texts.includes('点击释放'));
   assert.ok(ctx.texts.includes('看广告'));
+  assert.ok(ctx.texts.includes('分裂'));
   assert.equal(ctx.texts.includes('金币'), false);
+});
+
+test('减益状态条只显示未到时的减益并绘制完整', () => {
+  const view = { w: 750, h: 1334, bleed: { x: 0, y: 0, w: 750, h: 1334 } };
+  const layout = computePlayLayout(view);
+  const sim = {
+    time: 100,
+    effects: { wideUntil: 110, slowUntil: 0, shrinkUntil: 108, speedUntil: 103, reverseUntil: 0 },
+  };
+  const items = activeDebuffs(sim);
+  assert.deepEqual(items.map((item) => item.kind), ['shrink', 'speed']);
+  assert.ok(Math.abs(items[0].remain - 8) < 1e-9);
+  assert.ok(Math.abs(items[1].remain - 3) < 1e-9);
+
+  const ctx = makeCtx();
+  drawDebuffBar(ctx, layout, items);
+  assertFinite(ctx, 'debuff-bar');
+  assert.ok(ctx.texts.includes('缩板 8s'));
+  assert.ok(ctx.texts.includes('加速 3s'));
 });
 
 test('弹层布局与绘制坐标均为有限值', () => {

@@ -6,6 +6,7 @@ export function createAudioManager(store) {
     break: 'sound',
     coin: 'sound',
     skill: 'sound',
+    debuff: 'sound',
     ui: 'sound',
   };
 

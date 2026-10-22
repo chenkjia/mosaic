@@ -1,6 +1,6 @@
 export {
   BOARD, BALL, PADDLE, STEP, MAX_STEPS_PER_FRAME, SKILL, RULES,
-  SKILL_IDS, SKILL_SLOTS,
+  SKILL_IDS, SKILL_SLOTS, DEBUFF_IDS, DEBUFF,
   DESIGN_WIDTH, MIN_DESIGN_H, LEVEL_COUNT, THEMES,
 } from './constants.js';
 export { PALETTE, PALETTE_RGB, hexToRgb, isHexColor, nearestPaletteIndex } from './palette.js';
@@ -11,7 +11,7 @@ export {
 } from './level.js';
 export {
   createState, step, addBall, revive, activateSkill, addSkillCharge,
-  clearPercent, hashState,
+  triggerDebuff, clearPercent, hashState,
 } from './physics.js';
 export {
   SAVE_KEY, defaultSave, migrate, migrateWithStatus, serialize,

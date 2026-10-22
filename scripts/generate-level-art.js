@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PALETTE } from '../packages/shared/src/palette.js';
+import { DEBUFF_IDS } from '../packages/shared/src/constants.js';
 import { encodePng } from './lib/png.js';
 
 const W = 21;
@@ -903,19 +904,19 @@ function configFor(id) {
   return { count, speed };
 }
 
-// 奖励砖固定在 6 块，用最远点采样摊开：先取离重心最远的一格，再依次取离已选格最远的一格。
+// 奖励/减益砖用最远点采样摊开：先取离重心最远的一格，再依次取离已选格最远的一格。
 function hash2(id, x, y) {
   let h = (Math.imul(id, 374761393) + Math.imul(x, 668265263) + Math.imul(y, 2246822519)) >>> 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-function chooseRewards(g, obstacles, id) {
-  const blocked = new Set(obstacles.map(([x, y]) => x + ',' + y));
+function chooseSpread(g, blocked, count, id, salt) {
+  if (count <= 0) return [];
   const candidates = [];
   let sumX = 0;
   let sumY = 0;
-  for (let y = 0; y < H; y += 1) {
+  for (let y = 0; y < PLAY_ROWS; y += 1) {
     for (let x = 0; x < W; x += 1) {
       if (g[y][x] == null || blocked.has(x + ',' + y)) continue;
       candidates.push({ x, y });
@@ -923,7 +924,9 @@ function chooseRewards(g, obstacles, id) {
       sumY += y;
     }
   }
-  if (candidates.length <= 6) return candidates.map((cell) => [cell.x, cell.y]);
+  if (candidates.length <= count) {
+    return candidates.map((cell) => [cell.x, cell.y]).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+  }
   const cx = sumX / candidates.length;
   const cy = sumY / candidates.length;
   const chosen = [];
@@ -932,14 +935,14 @@ function chooseRewards(g, obstacles, id) {
   let firstScore = -1;
   for (let i = 0; i < remaining.length; i += 1) {
     const cell = remaining[i];
-    const score = (cell.x - cx) ** 2 + (cell.y - cy) ** 2 + hash2(id, cell.x, cell.y) * 1e-3;
+    const score = (cell.x - cx) ** 2 + (cell.y - cy) ** 2 + hash2(id + salt, cell.x, cell.y) * 1e-3;
     if (score > firstScore) {
       firstScore = score;
       first = i;
     }
   }
   chosen.push(remaining.splice(first, 1)[0]);
-  while (chosen.length < 6) {
+  while (chosen.length < count) {
     let best = 0;
     let bestGap = -1;
     let bestTie = -1;
@@ -951,7 +954,7 @@ function chooseRewards(g, obstacles, id) {
         const dy = cell.y - pick.y;
         gap = Math.min(gap, dx * dx + dy * dy);
       }
-      const tie = hash2(id + chosen.length * 131, cell.x, cell.y);
+      const tie = hash2(id + salt + chosen.length * 131, cell.x, cell.y);
       if (gap > bestGap || (gap === bestGap && tie > bestTie)) {
         bestGap = gap;
         bestTie = tie;
@@ -961,6 +964,126 @@ function chooseRewards(g, obstacles, id) {
     chosen.push(remaining.splice(best, 1)[0]);
   }
   return chosen.map((cell) => [cell.x, cell.y]).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+}
+
+// 底三行留给挡板活动区，像素画只能落在 0..24 行。
+const PLAY_ROWS = 25;
+
+const BANDS = [
+  { from: 1, to: 3, min: 70, max: 90 },
+  { from: 4, to: 7, min: 90, max: 120 },
+  { from: 8, to: 12, min: 120, max: 150 },
+  { from: 13, to: 16, min: 150, max: 175 },
+  { from: 17, to: 19, min: 175, max: 199 },
+  { from: 20, to: 24, min: 200, max: 250 },
+  { from: 25, to: 30, min: 250, max: 330 },
+];
+
+function bandFor(id) {
+  for (const band of BANDS) {
+    if (id >= band.from && id <= band.to) return band;
+  }
+  throw new Error('关卡 ' + id + ' 没有难度带');
+}
+
+function maskGrid() {
+  return Array.from({ length: H }, () => new Array(W).fill(false));
+}
+
+function rescale(g, mask, destH) {
+  const scale = destH / H;
+  const destW = Math.max(1, Math.min(W, Math.round(W * scale)));
+  const ox = Math.floor((W - destW) / 2);
+  const oy = PLAY_ROWS - destH;
+  const out = grid();
+  const outMask = maskGrid();
+  for (let y = 0; y < destH; y += 1) {
+    const sy = Math.min(H - 1, Math.floor(((y + 0.5) * H) / destH));
+    for (let x = 0; x < destW; x += 1) {
+      const sx = Math.min(W - 1, Math.floor(((x + 0.5) * W) / destW));
+      const color = g[sy][sx];
+      if (color == null) continue;
+      out[oy + y][ox + x] = color;
+      if (mask[sy][sx]) outMask[oy + y][ox + x] = true;
+    }
+  }
+  // 原画底部可能自带透明留白，整体下移让可见最底行贴住第 24 行。
+  let lowest = -1;
+  for (let y = 0; y < PLAY_ROWS; y += 1) {
+    if (out[y].some((color) => color != null)) lowest = y;
+  }
+  const shift = PLAY_ROWS - 1 - lowest;
+  if (shift > 0) {
+    for (let y = PLAY_ROWS - 1; y >= 0; y -= 1) {
+      out[y] = y - shift >= 0 ? out[y - shift] : new Array(W).fill(null);
+    }
+    for (let y = PLAY_ROWS - 1; y >= 0; y -= 1) {
+      outMask[y] = y - shift >= 0 ? outMask[y - shift] : maskGrid()[0];
+    }
+  }
+  return { g: out, mask: outMask, destH };
+}
+
+function countDestructibleGrid(g, mask) {
+  let total = 0;
+  for (let y = 0; y < PLAY_ROWS; y += 1) {
+    for (let x = 0; x < W; x += 1) {
+      if (g[y][x] != null && !mask[y][x]) total += 1;
+    }
+  }
+  return total;
+}
+
+// 取能满足砖数上限的最大缩放，像素画占满 25 行时即“接近满屏”。
+function fitToBand(src, srcMask, band, name) {
+  for (let destH = PLAY_ROWS; destH >= 6; destH -= 1) {
+    const scaled = rescale(src, srcMask, destH);
+    const count = countDestructibleGrid(scaled.g, scaled.mask);
+    if (count <= band.max) return { ...scaled, count };
+  }
+  throw new Error(name + ' 无法压到砖数上限 ' + band.max);
+}
+
+function backdropColor(theme, name) {
+  if (theme === 'flowers') return C.lilac;
+  if (theme === 'scenery') return name === 'night' ? C.lavender : C.sky;
+  return C.cream;
+}
+
+// 高关卡砖数不够时，从顶部按行补背景砖，保持图案轮廓完整。
+function fillBackdrop(g, need, color, name) {
+  let left = need;
+  for (let y = 0; y < PLAY_ROWS && left > 0; y += 1) {
+    for (let x = 0; x < W && left > 0; x += 1) {
+      if (g[y][x] != null) continue;
+      g[y][x] = color;
+      left -= 1;
+    }
+  }
+  if (left > 0) throw new Error(name + ' 背景填充不足，仍缺 ' + left);
+}
+
+function maskCells(mask) {
+  const out = [];
+  for (let y = 0; y < PLAY_ROWS; y += 1) {
+    for (let x = 0; x < W; x += 1) {
+      if (mask[y][x]) out.push([x, y]);
+    }
+  }
+  return out;
+}
+
+function debuffCountFor(id) {
+  if (id <= 3) return 0;
+  if (id <= 7) return 1;
+  if (id <= 12) return 2;
+  if (id <= 19) return 3;
+  return 4;
+}
+
+function debuffKindsFor(id, count) {
+  const start = Math.max(0, id - 4) % DEBUFF_IDS.length;
+  return Array.from({ length: count }, (_, i) => DEBUFF_IDS[(start + i) % DEBUFF_IDS.length]);
 }
 
 function toRgba(g) {
@@ -1045,20 +1168,49 @@ function main() {
   for (let i = 0; i < LEVELS.length; i += 1) {
     const id = i + 1;
     const def = LEVELS[i];
-    const g = grid();
-    const result = def.art(g);
-    const rewards = chooseRewards(g, result.obstacles, id);
-    for (const [x, y] of rewards) set(g, x, y, C.gold);
-    const all = cells(g);
-    if (all.length < 40) throw new Error(def.name + ' 砖块过少: ' + all.length);
-    for (const [x, y] of rewards) {
-      if (g[y][x] == null) throw new Error(def.name + ' 奖励坐标为空: ' + x + ',' + y);
-    }
+    const art = grid();
+    const result = def.art(art);
+    const artMask = maskGrid();
     for (const [x, y] of result.obstacles) {
-      if (g[y][x] == null) throw new Error(def.name + ' 障碍坐标为空: ' + x + ',' + y);
+      if (art[y][x] == null) throw new Error(def.name + ' 障碍坐标为空: ' + x + ',' + y);
+      artMask[y][x] = true;
     }
+
+    const band = bandFor(id);
+    const fitted = fitToBand(art, artMask, band, def.name);
+    if (fitted.count < band.min) {
+      fillBackdrop(fitted.g, band.min - fitted.count, backdropColor(def.theme, def.name), def.name);
+    }
+    const count = countDestructibleGrid(fitted.g, fitted.mask);
+    if (count < band.min || count > band.max) {
+      throw new Error(def.name + ' 砖数 ' + count + ' 超出区间 ' + band.min + '..' + band.max);
+    }
+
+    const obstacles = maskCells(fitted.mask);
+    const blocked = new Set(obstacles.map(([x, y]) => x + ',' + y));
+    const rewards = chooseSpread(fitted.g, blocked, 6, id, 0);
+    if (rewards.length !== 6) throw new Error(def.name + ' 奖励砖应为 6 块，实际 ' + rewards.length);
+    for (const [x, y] of rewards) {
+      blocked.add(x + ',' + y);
+      set(fitted.g, x, y, C.gold);
+    }
+    const debuffs = chooseSpread(fitted.g, blocked, debuffCountFor(id), id, 977);
+    const kinds = debuffKindsFor(id, debuffs.length);
+    const debuffMeta = debuffs.map(([x, y], index) => {
+      set(fitted.g, x, y, C.dark);
+      return [x, y, kinds[index]];
+    });
+
+    const all = cells(fitted.g);
+    for (let y = PLAY_ROWS; y < H; y += 1) {
+      if (fitted.g[y].some((color) => color != null)) throw new Error(def.name + ' 底三行必须为空');
+    }
+    for (const [x, y] of rewards) {
+      if (fitted.g[y][x] == null) throw new Error(def.name + ' 奖励坐标为空: ' + x + ',' + y);
+    }
+
     const base = String(id).padStart(2, '0') + '-' + def.name;
-    writeFileSync(path.join(SRC_DIR, base + '.png'), encodePng(W, H, toRgba(g)));
+    writeFileSync(path.join(SRC_DIR, base + '.png'), encodePng(W, H, toRgba(fitted.g)));
     const meta = {
       id,
       name: def.name,
@@ -1066,12 +1218,21 @@ function main() {
       theme: def.theme,
       size: [W, H],
       ball: configFor(id),
-      obstacles: result.obstacles,
+      obstacles,
       rewards,
+      debuffs: debuffMeta,
     };
     writeFileSync(path.join(SRC_DIR, base + '.json'), JSON.stringify(meta, null, 2) + '\n');
-    const destructible = all.length - result.obstacles.length;
-    report.push({ id, name: def.name, bricks: all.length, destructible, speed: meta.ball.speed, balls: meta.ball.count });
+    report.push({
+      id,
+      name: def.name,
+      bricks: all.length,
+      destructible: count,
+      debuffs: debuffMeta.length,
+      speed: meta.ball.speed,
+      balls: meta.ball.count,
+      scale: fitted.destH,
+    });
   }
   writeFileSync(path.join(COVER_DIR, 'cover.png'), makeCover());
   console.log('[levels] 生成 ' + LEVELS.length + ' 关源图 → assets/levels/src/');
@@ -1079,6 +1240,8 @@ function main() {
     console.log('  ' + String(row.id).padStart(2, '0') + ' ' + row.name.padEnd(10)
       + ' bricks ' + String(row.bricks).padStart(3)
       + ' · destructible ' + String(row.destructible).padStart(3)
+      + ' · debuff ' + row.debuffs
+      + ' · scale ' + row.scale + '/25'
       + ' · balls ' + row.balls + ' · speed ' + row.speed);
   }
   console.log('[levels] 分享封面 → apps/game/assets/share/cover.png');

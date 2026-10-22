@@ -4,7 +4,6 @@ import { C, FONT, SKILL_META } from './theme.js';
 
 const ACTIVE_KEY = {
   widePaddle: 'wideUntil',
-  laser: 'laserUntil',
   slow: 'slowUntil',
 };
 
@@ -27,19 +26,23 @@ function drawIcon(ctx, skill, cx, cy, color) {
     roundRectPath(ctx, cx - 10, cy + 8, 20, 5, 2.5);
     ctx.fill();
     ctx.globalAlpha = 1;
-  } else if (skill === 'laser') {
+  } else if (skill === 'split') {
     ctx.beginPath();
-    ctx.moveTo(cx, cy + 13);
-    ctx.lineTo(cx, cy - 6);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(cx - 8, cy - 13);
-    ctx.lineTo(cx, cy - 4);
-    ctx.lineTo(cx + 8, cy - 13);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(cx, cy + 15, 2.4, 0, Math.PI * 2);
+    ctx.arc(cx, cy - 6, 6, 0, Math.PI * 2);
     ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx - 11, cy + 9, 4.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx + 11, cy + 9, 4.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - 3.5, cy - 1);
+    ctx.lineTo(cx - 8, cy + 3.5);
+    ctx.moveTo(cx + 3.5, cy - 1);
+    ctx.lineTo(cx + 8, cy + 3.5);
+    ctx.stroke();
   } else if (skill === 'slow') {
     for (let i = 0; i < 3; i += 1) {
       const angle = (i * Math.PI) / 3;

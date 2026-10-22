@@ -30,15 +30,24 @@ export const STEP = 1 / 120;
 export const MAX_STEPS_PER_FRAME = 8;
 
 export const SKILL_SLOTS = 4;
-export const SKILL_IDS = ['multiBall', 'widePaddle', 'laser', 'slow'];
+export const SKILL_IDS = ['multiBall', 'widePaddle', 'split', 'slow'];
 
 export const SKILL = {
   wideDuration: 15,
-  laserDuration: 10,
-  laserInterval: 0.5,
+  splitAngleDeg: 30,
   slowDuration: 10,
   slowScale: 0.7,
   splitCooldown: 0.3,
+};
+
+export const DEBUFF_IDS = ['shrink', 'speed', 'reverse'];
+
+export const DEBUFF = {
+  shrinkScale: 0.65,
+  shrinkDuration: 8,
+  speedScale: 1.3,
+  speedDuration: 8,
+  reverseDuration: 6,
 };
 
 export const RULES = {

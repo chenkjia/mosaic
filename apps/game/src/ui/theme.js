@@ -48,7 +48,7 @@ export const FONT = {
 export const SKILL_META = {
   multiBall: { label: '多球', short: '多', color: C.pinkDeep, tip: '分裂出 2 颗球' },
   widePaddle: { label: '加宽', short: '宽', color: C.blue, tip: '挡板加宽 15 秒' },
-  laser: { label: '激光', short: '激', color: C.violet, tip: '激光连射 10 秒' },
+  split: { label: '分裂', short: '分', color: C.violet, tip: '场上所有球各分裂 1 颗' },
   slow: { label: '减速', short: '慢', color: C.mintDeep, tip: '球速降到 0.7 倍' },
 };
 
@@ -59,7 +59,9 @@ export const THEME_LABEL = {
 };
 
 export const EFFECT_META = {
-  wide: { label: '加宽', color: C.blue, icon: 'widePaddle' },
-  laser: { label: '激光', color: C.violet, icon: 'laser' },
-  slow: { label: '减速', color: C.mintDeep, icon: 'slow' },
+  wide: { label: '加宽', short: '宽', color: C.blue, icon: 'widePaddle' },
+  slow: { label: '减速', short: '慢', color: C.mintDeep, icon: 'slow' },
+  shrink: { label: '挡板缩短', short: '缩板', color: C.orange, icon: 'shrink' },
+  speed: { label: '球速加快', short: '加速', color: C.danger, icon: 'speed' },
+  reverse: { label: '方向反转', short: '反向', color: C.violet, icon: 'reverse' },
 };

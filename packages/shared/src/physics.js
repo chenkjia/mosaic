@@ -1,5 +1,5 @@
 import {
-  BALL, BOARD, PADDLE, RULES, SKILL, SKILL_IDS, SKILL_SLOTS,
+  BALL, BOARD, DEBUFF, DEBUFF_IDS, PADDLE, RULES, SKILL, SKILL_IDS, SKILL_SLOTS,
 } from './constants.js';
 import { chance, createRng, nextFloat, nextInt, nextRange } from './rng.js';
 import { countDestructible, parseLevel } from './level.js';
@@ -44,7 +44,13 @@ export function createState(levelInput, seed, options) {
     },
     drops: [],
     charges: new Array(SKILL_SLOTS).fill(0),
-    effects: { wideUntil: 0, laserUntil: 0, laserNext: 0, slowUntil: 0 },
+    effects: {
+      wideUntil: 0,
+      slowUntil: 0,
+      shrinkUntil: 0,
+      speedUntil: 0,
+      reverseUntil: 0,
+    },
     reviveUsed: false,
     rng: createRng(rngSeed),
     nextId: 1,
@@ -69,6 +75,7 @@ export function createState(levelInput, seed, options) {
       color: brick.color,
       hp: brick.hp,
       maxHp: brick.hp,
+      debuff: brick.debuff || null,
       alive: true,
     });
   }
@@ -138,6 +145,11 @@ export function activateSkill(state, index) {
   }
   const skill = SKILL_IDS[index];
   if (state.charges[index] <= 0) return { ok: false, skill, events: [] };
+
+  if (skill === 'split' && !state.balls.some((ball) => !ball.docked)) {
+    return { ok: false, skill, events: [], reason: 'noMovingBall' };
+  }
+
   state.charges[index] = 0;
   const events = [{ type: 'skillUsed', skill, slot: index }];
 
@@ -149,18 +161,54 @@ export function activateSkill(state, index) {
   } else if (skill === 'widePaddle') {
     state.effects.wideUntil = state.time + SKILL.wideDuration;
     updatePaddleWidth(state);
-  } else if (skill === 'laser') {
-    state.effects.laserUntil = state.time + SKILL.laserDuration;
-    state.effects.laserNext = state.time;
+  } else if (skill === 'split') {
+    splitAllBalls(state, events);
   } else if (skill === 'slow') {
     state.effects.slowUntil = state.time + SKILL.slowDuration;
   }
   return { ok: true, skill, events };
 }
 
+function splitAllBalls(state, events) {
+  const moving = state.balls.filter((ball) => !ball.docked);
+  let spawnedCount = 0;
+  let blocked = 0;
+  for (let i = 0; i < moving.length; i += 1) {
+    const source = moving[i];
+    if (state.balls.length >= BALL.cap) {
+      blocked += 1;
+      continue;
+    }
+    const speed = Math.hypot(source.vx, source.vy) || state.levelSpeed;
+    const angle = Math.atan2(source.vy, source.vx)
+      + (chance(state.rng, 0.5) ? 1 : -1) * SKILL.splitAngleDeg * DEG;
+    const spawned = addBall(state, source.kind, false);
+    if (!spawned) {
+      blocked += 1;
+      continue;
+    }
+    spawned.x = source.x + Math.cos(angle);
+    spawned.y = source.y + Math.sin(angle);
+    spawned.vx = Math.cos(angle) * speed;
+    spawned.vy = Math.sin(angle) * speed;
+    spawned.splitCooldown = SKILL.splitCooldown;
+    spawnedCount += 1;
+    events.push({
+      type: 'ballSpawned',
+      ballId: spawned.id,
+      kind: spawned.kind,
+      source: 'splitAll',
+    });
+  }
+  if (blocked > 0) events.push({ type: 'splitBlocked', count: blocked, spawned: spawnedCount });
+}
+
 function updatePaddleWidth(state) {
   const wide = state.time < state.effects.wideUntil;
-  state.paddle.w = state.paddle.baseW * (wide ? PADDLE.wideScale : 1);
+  const shrink = state.time < state.effects.shrinkUntil;
+  state.paddle.w = state.paddle.baseW
+    * (wide ? PADDLE.wideScale : 1)
+    * (shrink ? DEBUFF.shrinkScale : 1);
   const half = state.paddle.w / 2;
   state.paddle.x = clamp(state.paddle.x, half, BOARD.w - half);
 }
@@ -290,6 +338,7 @@ function damageBrick(state, brick, amount, events) {
     hp: Math.max(0, brick.hp),
     kind: brick.type,
     color: brick.color,
+    debuff: brick.debuff || null,
     x: center.x,
     y: center.y,
   });
@@ -303,14 +352,45 @@ function damageBrick(state, brick, amount, events) {
     brickId: brick.id,
     kind: brick.type,
     color: brick.color,
+    debuff: brick.debuff || null,
     x: center.x,
     y: center.y,
   });
   if (brick.type === 'reward') spawnRewardDrop(state, center, events);
+  if (brick.type === 'debuff') {
+    const event = triggerDebuff(state, brick.debuff);
+    if (event) {
+      event.x = center.x;
+      event.y = center.y;
+      events.push(event);
+    }
+  }
   if (state.stats.left <= 0) {
     state.phase = 'cleared';
     events.push({ type: 'levelClear' });
   }
+}
+
+export function triggerDebuff(state, kind) {
+  if (!DEBUFF_IDS.includes(kind)) return null;
+  let duration = 0;
+  if (kind === 'shrink') {
+    duration = DEBUFF.shrinkDuration;
+    state.effects.shrinkUntil = state.time + duration;
+    updatePaddleWidth(state);
+  } else if (kind === 'speed') {
+    duration = DEBUFF.speedDuration;
+    state.effects.speedUntil = state.time + duration;
+  } else if (kind === 'reverse') {
+    duration = DEBUFF.reverseDuration;
+    state.effects.reverseUntil = state.time + duration;
+  }
+  return {
+    type: 'debuffTriggered',
+    debuff: kind,
+    duration,
+    until: state.time + duration,
+  };
 }
 
 function spawnRewardDrop(state, center, events) {
@@ -355,44 +435,8 @@ function splitGreenBall(state, ball, events) {
   events.push({ type: 'ballSpawned', ballId: spawned.id, kind: 'blue', source: 'split' });
 }
 
-function findLaserTarget(state) {
-  const paddleCol = clamp(Math.floor(state.paddle.x / BOARD.cell), 0, BOARD.cols - 1);
-  const dirs = [0, -1, 1];
-  for (let radius = 0; radius < BOARD.cols; radius += 1) {
-    for (let d = 0; d < dirs.length; d += 1) {
-      const col = paddleCol + dirs[d] * radius;
-      if (col < 0 || col >= BOARD.cols) continue;
-      let target = null;
-      for (let i = 0; i < state.bricks.length; i += 1) {
-        const brick = state.bricks[i];
-        if (!brick.alive || brick.type === 'obstacle' || brick.col !== col) continue;
-        if (!target || brick.y > target.y) target = brick;
-      }
-      if (target) return target;
-    }
-  }
-  return null;
-}
-
-function fireLaser(state, events) {
-  const target = findLaserTarget(state);
-  if (!target) return;
-  const center = brickCenter(target);
-  events.push({ type: 'laserFire', x: center.x, y: center.y, brickId: target.id });
-  damageBrick(state, target, 1, events);
-}
-
-function updateEffects(state, events) {
+function updateEffects(state) {
   updatePaddleWidth(state);
-  if (state.time < state.effects.slowUntil) {
-    // 减速通过位移缩放实现，速度矢量与确定性保持不变。
-  }
-  if (state.time < state.effects.laserUntil) {
-    if (state.time >= state.effects.laserNext) {
-      state.effects.laserNext = state.time + SKILL.laserInterval;
-      fireLaser(state, events);
-    }
-  }
 }
 
 function collideBalls(state, events) {
@@ -465,14 +509,17 @@ export function step(state, input, dt) {
 
   if (input && Number.isFinite(input.paddleX)) {
     const half = state.paddle.w / 2;
-    state.paddle.x = clamp(input.paddleX, half, BOARD.w - half);
+    const reverse = state.time < state.effects.reverseUntil;
+    const target = reverse ? BOARD.w - input.paddleX : input.paddleX;
+    state.paddle.x = clamp(target, half, BOARD.w - half);
   }
   if (input && input.launch && state.phase === 'ready') launchDocked(state, events);
 
-  updateEffects(state, events);
+  updateEffects(state);
 
   const slow = state.time < state.effects.slowUntil ? SKILL.slowScale : 1;
-  const move = delta * slow;
+  const speed = state.time < state.effects.speedUntil ? DEBUFF.speedScale : 1;
+  const move = delta * slow * speed;
 
   for (let i = 0; i < state.balls.length; i += 1) {
     const ball = state.balls[i];

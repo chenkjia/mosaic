@@ -1,7 +1,7 @@
-import { BALL, BOARD } from './constants.js';
+import { BALL, BOARD, DEBUFF_IDS } from './constants.js';
 import { PALETTE, nearestPaletteIndex, isHexColor } from './palette.js';
 
-export const BRICK_TYPES = ['normal', 'hard', 'obstacle', 'reward'];
+export const BRICK_TYPES = ['normal', 'hard', 'obstacle', 'reward', 'debuff'];
 export const ANCHORS = ['center', 'bottom'];
 
 export function countDestructible(bricks) {
@@ -32,12 +32,14 @@ export function parseLevel(raw) {
       let hp = 1;
       if (type === 'hard') hp = isInt(brick.hp) ? brick.hp : 2;
       if (type === 'obstacle') hp = 0;
+      const debuff = type === 'debuff' && DEBUFF_IDS.includes(brick.debuff) ? brick.debuff : null;
       return {
         x: brick && brick.x,
         y: brick && brick.y,
         type,
         color: brick && isInt(brick.color) ? brick.color : 0,
         hp,
+        debuff,
       };
     })
     : [];
@@ -109,11 +111,14 @@ export function validateLevel(level) {
     if (brick.type === 'hard' && (!isInt(brick.hp) || brick.hp < 2 || brick.hp > 3)) {
       errors.push('bricks[' + i + '] 硬砖 hp 必须是 2 或 3');
     }
-    if ((brick.type === 'normal' || brick.type === 'reward') && brick.hp !== 1) {
-      errors.push('bricks[' + i + '] 普通/奖励砖 hp 必须是 1');
+    if ((brick.type === 'normal' || brick.type === 'reward' || brick.type === 'debuff') && brick.hp !== 1) {
+      errors.push('bricks[' + i + '] 普通/奖励/减益砖 hp 必须是 1');
     }
     if (brick.type === 'obstacle' && brick.hp !== 0) {
       errors.push('bricks[' + i + '] 障碍砖 hp 必须是 0');
+    }
+    if (brick.type === 'debuff' && !DEBUFF_IDS.includes(brick.debuff)) {
+      errors.push('bricks[' + i + '] 减益砖 debuff 必须是 ' + DEBUFF_IDS.join('/'));
     }
     const key = brick.x + ',' + brick.y;
     if (seen.has(key)) errors.push('bricks[' + i + '] 坐标重复 ' + key);
@@ -140,7 +145,10 @@ export function gridToBricks(grid, options) {
       let hp = 1;
       if (type === 'hard') hp = decoration && isInt(decoration.hp) ? decoration.hp : 2;
       if (type === 'obstacle') hp = 0;
-      bricks.push({ x, y, type, color, hp });
+      const debuff = type === 'debuff' && decoration && DEBUFF_IDS.includes(decoration.debuff)
+        ? decoration.debuff
+        : null;
+      bricks.push({ x, y, type, color, hp, debuff });
     }
   }
   return bricks;

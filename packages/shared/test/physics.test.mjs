@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  BOARD, BALL, PADDLE, SKILL, SKILL_IDS, clearPercent, createState, hashState, step,
-  activateSkill, addBall, revive, addSkillCharge,
+  BOARD, BALL, PADDLE, SKILL, SKILL_IDS, DEBUFF, clearPercent, createState, hashState, step,
+  activateSkill, addBall, revive, addSkillCharge, triggerDebuff,
 } from '../src/index.js';
 import { cellBrick, makeBrick, makeLevel, putBall } from './helpers.mjs';
 
@@ -42,6 +42,7 @@ test('同种子同输入 600 步逐帧一致', () => {
   }
   bricks.push(makeBrick(9, 12, 'reward'));
   bricks.push(makeBrick(16, 10, 'obstacle'));
+  bricks.push(makeBrick(13, 7, 'debuff', 1, 8, 'shrink'));
   const a = createState(makeLevel(bricks, { ballCount: 2 }), 987654);
   const b = createState(makeLevel(bricks, { ballCount: 2 }), 987654);
   for (let i = 0; i < 600; i += 1) {
@@ -226,7 +227,7 @@ test('自定义失败线：球落到失败线以下才丢失', () => {
   assert.equal(state.phase, 'failed');
 });
 
-test('技能：多球、加宽刷新、激光、减速', () => {
+test('技能：多球、加宽刷新、分裂、减速', () => {
   const multi = createState(makeLevel([makeBrick(20, 0)]), 1);
   multi.charges[0] = 1;
   const before = multi.balls.length;
@@ -248,16 +249,6 @@ test('技能：多球、加宽刷新、激光、减速', () => {
   step(wide, null, DT);
   assert.equal(wide.paddle.w, PADDLE.w);
 
-  const laser = createState(makeLevel([makeBrick(10, 10, 'hard')]), 1);
-  laser.charges[2] = 1;
-  putBall(laser, { x: 300, y: 500, vx: 0, vy: -10 });
-  activateSkill(laser, 2);
-  let events = step(laser, null, DT).events;
-  assert.ok(events.some((e) => e.type === 'laserFire'));
-  assert.equal(cellBrick(laser, 10, 10).hp, 1);
-  for (let i = 0; i < 61; i += 1) events = step(laser, null, DT).events;
-  assert.equal(cellBrick(laser, 10, 10).alive, false);
-
   const normal = createState(makeLevel([makeBrick(20, 0)]), 1);
   putBall(normal, { x: 100, y: 500, vx: 600 });
   for (let i = 0; i < 120; i += 1) step(normal, null, DT);
@@ -268,6 +259,106 @@ test('技能：多球、加宽刷新、激光、减速', () => {
   slow.effects.slowUntil = 20;
   for (let i = 0; i < 120; i += 1) step(slow, null, DT);
   assert.ok(Math.abs(slow.balls[0].x - (100 + 600 * SKILL.slowScale)) < 1.5);
+});
+
+test('分裂技能：场上所有运动球各分裂一颗同色球，静止球不参与', () => {
+  const state = createState(makeLevel([makeBrick(20, 0)]), 1);
+  state.phase = 'playing';
+  state.nextId = 10;
+  state.balls = [
+    { id: 1, x: 300, y: 500, vx: 200, vy: -100, r: 9, kind: 'blue', docked: false, dockOffset: 0, splitCooldown: 0 },
+    { id: 2, x: 400, y: 500, vx: -150, vy: -80, r: 9, kind: 'green', docked: false, dockOffset: 0, splitCooldown: 0 },
+  ];
+  const speeds = state.balls.map((ball) => Math.hypot(ball.vx, ball.vy));
+  state.charges[2] = 1;
+  const result = activateSkill(state, 2);
+  assert.equal(result.ok, true);
+  assert.equal(state.charges[2], 0);
+  assert.equal(state.balls.length, 4);
+  assert.equal(result.events.filter((e) => e.type === 'ballSpawned').length, 2);
+  for (let i = 0; i < 2; i += 1) {
+    const source = state.balls[i];
+    const spawned = state.balls[i + 2];
+    assert.equal(spawned.kind, source.kind);
+    assert.ok(Math.abs(Math.hypot(spawned.vx, spawned.vy) - speeds[i]) < 0.001);
+    const dot = source.vx * spawned.vx + source.vy * spawned.vy;
+    const cross = source.vx * spawned.vy - source.vy * spawned.vx;
+    assert.ok(Math.abs(Math.atan2(cross, dot)) > 0.5);
+  }
+
+  const ready = createState(makeLevel([makeBrick(20, 0)]), 1);
+  ready.charges[2] = 1;
+  const rejected = activateSkill(ready, 2);
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.reason, 'noMovingBall');
+  assert.equal(ready.charges[2], 1);
+});
+
+test('分裂技能受 8 球上限约束，达到上限记 splitBlocked', () => {
+  const state = createState(makeLevel([makeBrick(20, 0)]), 1);
+  state.phase = 'playing';
+  state.balls = [];
+  for (let i = 0; i < 7; i += 1) {
+    state.balls.push({
+      id: 20 + i,
+      x: 200 + i * 20,
+      y: 500,
+      vx: 100 + i,
+      vy: -50,
+      r: 9,
+      kind: 'blue',
+      docked: false,
+      dockOffset: 0,
+      splitCooldown: 0,
+    });
+  }
+  state.nextId = 100;
+  state.charges[2] = 1;
+  const { events } = activateSkill(state, 2);
+  assert.equal(state.balls.length, BALL.cap);
+  assert.equal(events.filter((e) => e.type === 'ballSpawned').length, 1);
+  const blocked = events.find((e) => e.type === 'splitBlocked');
+  assert.ok(blocked);
+  assert.equal(blocked.count, 6);
+  assert.equal(blocked.spawned, 1);
+});
+
+test('减益砖：击碎触发缩短，挡板缩小并计入清除率', () => {
+  const state = createState(makeLevel([
+    makeBrick(10, 10, 'debuff', 1, 9, 'shrink'),
+    makeBrick(18, 2),
+  ]), 1);
+  assert.equal(state.stats.total, 2);
+  putBall(state, { x: 357, y: 10 * 34 + 1.5 - 10, vy: 300 });
+  const { events } = step(state, null, DT);
+  assert.ok(events.some((e) => e.type === 'debuffTriggered' && e.debuff === 'shrink'));
+  assert.equal(state.paddle.w, PADDLE.w * DEBUFF.shrinkScale);
+  assert.equal(state.stats.left, 1);
+  assert.equal(state.drops.length, 0);
+
+  state.time = 5;
+  triggerDebuff(state, 'shrink');
+  assert.equal(state.effects.shrinkUntil, 5 + DEBUFF.shrinkDuration);
+  state.effects.wideUntil = 100;
+  step(state, null, DT);
+  assert.ok(Math.abs(state.paddle.w - PADDLE.w * PADDLE.wideScale * DEBUFF.shrinkScale) < 0.001);
+});
+
+test('减益：加速按 1.3 倍位移，反向控制镜像输入，到时恢复', () => {
+  const speed = createState(makeLevel([makeBrick(20, 0)]), 1);
+  putBall(speed, { x: 100, y: 500, vx: 600 });
+  triggerDebuff(speed, 'speed');
+  for (let i = 0; i < 60; i += 1) step(speed, null, DT);
+  assert.ok(Math.abs(speed.balls[0].x - (100 + 600 * DEBUFF.speedScale * 0.5)) < 2);
+
+  const reverse = createState(makeLevel([makeBrick(20, 0)]), 1);
+  triggerDebuff(reverse, 'reverse');
+  step(reverse, { paddleX: 100 }, DT);
+  assert.ok(Math.abs(reverse.paddle.x - (BOARD.w - 100)) < 0.01);
+  for (let i = 0; i < 6 * 120; i += 1) step(reverse, { paddleX: 100 }, DT);
+  assert.ok(reverse.time >= DEBUFF.reverseDuration);
+  step(reverse, { paddleX: 100 }, DT);
+  assert.ok(Math.abs(reverse.paddle.x - 100) < 0.01);
 });
 
 test('每块奖励砖必掉技能充能，可被挡板拾取', () => {
