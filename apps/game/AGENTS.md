@@ -23,6 +23,7 @@
 - 场景/业务层：组合层，只调用 ui/gfx，不直接写 ctx 样式细节。
 - 业务层永远在 750 设计坐标系绘制，platform 层 fit 缩放；触摸换算读画布实际尺寸。
 - 局内界面一张卡：游戏面板与棋盘同宽（714，左右各留 18），从 HUD 下沿铺到屏幕物理最底，底部圆角画在屏外；卡内分隔线在四格技能栏上沿，同时是模拟层失败线（`failY`）。棋盘底边到失败线之间是下落带，只保留左右边界。操作区是独立的通宽矩形（HUD 下沿到屏幕底、左右贴屏），判定禁止用卡片或棋盘矩形（会断手）。技能栏固定贴底，底边自「屏幕底 − `safeBottom`」向上留 24。
+- 无首页：`createGameApp` 只创建 `play` 场景，启动即 `play.start(store.get().highestLevel)`，预开局弹层只有开始与广告加球；暂停保留继续/音效/音乐/分享/重开。不要恢复 `scene/home.js`、`onExit` 或任何「返回主页」按钮。
 
 ## 单包架构
 
@@ -63,4 +64,6 @@
 - 用户仍觉得局内游戏区没铺到屏幕底 → 判定区（通宽面板）早已到底，但视觉主体是棋盘卡片，卡片底边成了眼睛看到的「游戏区」边界，低 alpha 底衬补不回来。**方案**：视觉改成与棋盘同宽的一张卡铺到屏幕物理底，卡内分隔线标出失败线；操作区保持独立通宽。**验证**：`render.test.mjs` 断言卡片同宽触底、分隔线等于技能栏上沿；fit 与 fallback 两视口截图确认卡片下沿贴屏。
 - 视口变高后球在棋盘下沿就被判失败 → `sim.failY` 是纯数据，不会自己跟着布局走。**方案**：`play.draw()` 每帧由 `computePlayLayout` 重算 `layout.failY` 并写回 `sim.failY`，失败线永远等于技能栏上沿；`createState` 的默认值只服务测试。**验证**：浏览器改视口后读 `getSnapshot().failY` 与 `rects.dividerY` 差值等于棋盘 `y`；shared 测试覆盖自定义 `failY`。
 - toast 遮住整排技能格 → toast 默认画在屏幕底边，技能栏改为常驻贴底后必然重叠。**方案**：局内 toast 基线取 `min(屏底 − 12, 技能栏上沿 − 16)`。**验证**：375×812 截图确认提示条完整位于技能栏上方。
-- 删除金币/扩容后主页或调试按钮仍引用旧字段 → 仅改 shared 会让页面在 `store.get().coins` 处静默 NaN，调试 API 直接抛错。**方案**：共享 API 与存档字段同步删除，旧存档迁移时丢弃未知字段；全仓 grep `coins` / `slotCapacity` 只剩迁移测试。**验证**：`corepack pnpm test` 46 项通过、`verify:dist` 通过。
+- 删除金币/扩容后界面或调试按钮仍引用旧字段 → 仅改 shared 会让页面在 `store.get().coins` 处静默 NaN，调试 API 直接抛错。**方案**：共享 API 与存档字段同步删除，旧存档迁移时丢弃未知字段；全仓 grep `coins` / `slotCapacity` 只剩迁移测试。**验证**：`corepack pnpm test` 47 项通过、`verify:dist` 通过。
+- 奖励砖击碎后「没掉东西」 → 掉落原为 50% 概率，且四格技能全满时静默返回，玩家无法区分未触发与已满。**方案**：`RULES.skillDropChance = 1`，四格全满时发 `skillFull`（`skill: null`），页面 toast「四个技能都已就绪」；掉落仍需挡板接住。**验证**：`physics.test.mjs` 用固定种子断言必掉与满格零掉落；浏览器击碎奖励砖可观察到菱形掉落。
+- 移除首页后仍有入口返回空场景 → 只删 `home.js` 不够，`play` 的 `onExit`、四类弹层的 `home` 按钮与 `handleAction('home')` 会留下死路径。**方案**：`createGameApp` 直接启动最高关，删除 home import/场景分支/`backHome`/`onExit` 与全部 home 按钮。**验证**：全仓 grep `scene/home|createHomeScene|onExit|backHome` 零命中；浏览器四类弹层按钮清单无 home。

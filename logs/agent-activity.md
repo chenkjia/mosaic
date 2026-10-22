@@ -133,3 +133,14 @@
 - 改动：REQ-001 状态、范围 §3 与决策记录补记「金币与技能槽扩容整体移除」；验证报告将该风险从待确认改为已确认。代码与测试无改动。
 - 验证：本轮仅文档变更，沿用同日 46/46 测试、三端构建 0.44MB 与 `verify:dist` 通过结果。
 - 剩余风险：红/绿球产出入口仍待确认；50% 掉落率与单格上限 1 次为调参项；真机走查未执行。
+
+## 2026-10-22 · REQ-001 奖励砖必掉 + 移除首页
+
+- 触发：用户反馈「奖励砖怎么没有掉东西」，并要求「不需要首页，直接简单粗暴」。按推荐默认执行：奖励砖必掉、掉落仍需挡板接住；启动直达最高关预开局；暂停保留继续/音效/音乐/分享/重开。
+- 根因：奖励掉落原为 50% 概率，且四格技能全满时静默返回，玩家无法区分「没触发」与「已满」，看起来像奖励砖不掉东西。
+- 改动：`packages/shared/src/constants.js` 将 `RULES.skillDropChance` 改为 1；`physics.js` 在四格全满时发 `skillFull`（`skill: null`）且不生成掉落物；`play.js` 据此提示「四个技能都已就绪」。删除 `apps/game/src/game/scene/home.js`；`game/index.js` 只创建 `play` 并启动 `store.get().highestLevel`，移除场景分支、`backHome` 与 `onExit`；`play.js` 删除预开局/暂停/结算/失败弹层的 home 按钮与 `handleAction('home')`；`boot/main.js` 启动日志改为 `[boot] play`。
+- 测试：`physics.test.mjs` 去掉种子轮询，固定种子断言每块奖励砖必掉且可拾取；新增四格全满时 `skillFull` 且零掉落用例。测试总数 46 → 47。
+- 文档：REQ-001（范围、验收 6/11、决策记录）、验证报告、真机清单（含 3.8 满格奖励砖）、README、根/游戏端 AGENTS、spec、ticket 06、活动日志同步；首页相关口径全部删除。
+- 验证：`corepack pnpm test` 47/47 通过（shared 27 / game 20）；三端构建 web 0.43MB、微信/抖音 0.44MB；`verify:dist` OK。清空存档后浏览器冷启动 `scene=play / levelId=1 / modal=preRound`，按钮仅 `start / extraBall`；四类弹层按钮分别为 `start+extraBall`、`resume+sound+music+share+restart`、`next`、`revive+retry`，均无 home；复活广告后 `reviveUsed=true / phase=ready`，技能补给广告后 `charges[0]=1 / paused=false`；控制台仅 `[game] boot 0.1.0`、`[boot] play 0.1.0`，无 error。
+- 剩余风险：奖励砖掉落与满格提示的真机视觉未人工走查；分享卡片 query 仍不决定进入关卡（与改动前一致）；红/绿球产出入口仍待确认；真机、真实广告位与低端机性能待用户按 `device-checklist.md` 执行。
+- 下一步：用户真机复核奖励砖必掉与无首页启动；确认红/绿球产出来源；配置真实广告位。

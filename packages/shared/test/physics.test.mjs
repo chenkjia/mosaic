@@ -270,30 +270,37 @@ test('技能：多球、加宽刷新、激光、减速', () => {
   assert.ok(Math.abs(slow.balls[0].x - (100 + 600 * SKILL.slowScale)) < 1.5);
 });
 
-test('奖励砖掉落可被挡板拾取并充能对应技能', () => {
-  let found = null;
-  for (let seed = 1; seed < 80 && !found; seed += 1) {
-    const state = createState(makeLevel([
-      makeBrick(10, 14, 'reward'),
-      makeBrick(18, 2),
-    ]), seed);
-    putBall(state, { x: 357, y: 14 * 34 + 1.5 - 10, vy: 300 });
-    const { events } = step(state, null, DT);
-    const dropEvent = events.find((e) => e.type === 'dropSpawn');
-    if (dropEvent) found = { state, dropEvent };
-  }
-  assert.ok(found, '80 个种子内应至少出现一次奖励掉落');
-  assert.equal(found.state.drops.length, 1);
-  const drop = found.state.drops[0];
+test('每块奖励砖必掉技能充能，可被挡板拾取', () => {
+  const state = createState(makeLevel([
+    makeBrick(10, 14, 'reward'),
+    makeBrick(18, 2),
+  ]), 1);
+  putBall(state, { x: 357, y: 14 * 34 + 1.5 - 10, vy: 300 });
+  const { events } = step(state, null, DT);
+  assert.ok(events.some((e) => e.type === 'dropSpawn'));
+  assert.equal(state.drops.length, 1);
+  const drop = state.drops[0];
   assert.equal(drop.kind, 'skill');
-  drop.x = found.state.paddle.x;
-  drop.y = found.state.paddle.y - found.state.paddle.h / 2 - 20;
-  let events = [];
-  for (let i = 0; i < 40 && found.state.drops.length > 0; i += 1) {
-    events = step(found.state, null, DT).events;
+  drop.x = state.paddle.x;
+  drop.y = state.paddle.y - state.paddle.h / 2 - 20;
+  let picked = false;
+  for (let i = 0; i < 40 && state.drops.length > 0; i += 1) {
+    picked = step(state, null, DT).events.some((e) => e.type === 'skillPickup');
   }
-  assert.ok(events.some((e) => e.type === 'skillPickup'));
-  assert.equal(found.state.charges[SKILL_IDS.indexOf(drop.skill)], 1);
+  assert.equal(picked, true);
+  assert.equal(state.charges[SKILL_IDS.indexOf(drop.skill)], 1);
+});
+
+test('四格技能满时奖励砖不再生成掉落物', () => {
+  const state = createState(makeLevel([
+    makeBrick(10, 14, 'reward'),
+    makeBrick(18, 2),
+  ]), 1);
+  for (let i = 0; i < state.charges.length; i += 1) state.charges[i] = 1;
+  putBall(state, { x: 357, y: 14 * 34 + 1.5 - 10, vy: 300 });
+  const { events } = step(state, null, DT);
+  assert.ok(events.some((e) => e.type === 'skillFull'));
+  assert.equal(state.drops.length, 0);
 });
 
 test('技能充能每格最多 1 次，释放后清零', () => {

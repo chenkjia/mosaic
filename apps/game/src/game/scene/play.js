@@ -96,7 +96,7 @@ function createBeams() {
 }
 
 export function createPlayScene(deps) {
-  const { platform, store, audio, onExit, onShare } = deps;
+  const { platform, store, audio, onShare } = deps;
   const toast = createToast();
   const particles = createParticles();
   const beams = createBeams();
@@ -175,7 +175,6 @@ export function createPlayScene(deps) {
           kind: extraBallBought ? 'disabled' : 'mint',
           disabled: extraBallBought,
         },
-        { id: 'home', label: '返回主页', kind: 'ghost' },
       ],
       note: '额外球只影响本关初始球',
     };
@@ -200,7 +199,6 @@ export function createPlayScene(deps) {
         { id: 'music', label: '音乐 ' + (save.music ? '开' : '关'), kind: 'secondary' },
         { id: 'share', label: '分享游戏', kind: 'secondary' },
         { id: 'restart', label: '重开本关', kind: 'secondary' },
-        { id: 'home', label: '返回主页', kind: 'ghost' },
       ],
       note: '切换后台会自动暂停',
     };
@@ -220,7 +218,6 @@ export function createPlayScene(deps) {
       ],
       buttons: [
         { id: 'next', label: allDone ? '再玩一次' : '下一关', kind: 'primary' },
-        { id: 'home', label: '返回主页', kind: 'ghost' },
       ],
       autoAt: lastNow > 0 ? lastNow + 6500 : 0,
       autoLabel: allDone ? '自动再玩一次' : '自动进入下一关',
@@ -245,7 +242,6 @@ export function createPlayScene(deps) {
           disabled: sim.reviveUsed,
         },
         { id: 'retry', label: '重来一局', kind: 'secondary' },
-        { id: 'home', label: '返回主页', kind: 'ghost' },
       ],
       note: '重来一局会重置本关技能充能',
     };
@@ -296,12 +292,6 @@ export function createPlayScene(deps) {
     paused = false;
     acc = 0;
     lastNow = 0;
-  }
-
-  function exitHome() {
-    modal = null;
-    paused = true;
-    onExit();
   }
 
   function nextLevel() {
@@ -414,8 +404,6 @@ export function createPlayScene(deps) {
       beginRound();
     } else if (id === 'extraBall') {
       watchExtraBall();
-    } else if (id === 'home') {
-      exitHome();
     } else if (id === 'resume') {
       resume();
     } else if (id === 'restart') {
@@ -486,7 +474,7 @@ export function createPlayScene(deps) {
           break;
         }
         case 'skillFull':
-          toast.show('该技能已就绪');
+          toast.show(event.skill ? '该技能已就绪' : '四个技能都已就绪');
           break;
         case 'skillUsed': {
           const meta = SKILL_META[event.skill];

@@ -66,7 +66,7 @@ export function startBoot(platform, loadGameModule) {
     if (startedAt === null) startedAt = now;
     if (phase === 'loading' && gameReady && now - startedAt >= MIN_LOADING_MS) {
       phase = 'game';
-      platform.log('[boot] home ' + version);
+      platform.log('[boot] play ' + version);
     }
 
     platform.applyViewTransform(ctx);

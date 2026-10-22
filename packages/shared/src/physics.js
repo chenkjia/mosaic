@@ -319,7 +319,10 @@ function spawnRewardDrop(state, center, events) {
   for (let i = 0; i < SKILL_SLOTS; i += 1) {
     if (state.charges[i] <= 0) available.push(i);
   }
-  if (available.length === 0) return;
+  if (available.length === 0) {
+    events.push({ type: 'skillFull', skill: null });
+    return;
+  }
   const skill = SKILL_IDS[available[nextInt(state.rng, 0, available.length - 1)]];
   const drop = {
     id: state.nextId,

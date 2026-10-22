@@ -1,8 +1,8 @@
 # REQ-001 V1 验证报告
 
-- 日期：2026-10-21（初版），2026-10-22（HUD / 技能栏 / 失败线复核）
+- 日期：2026-10-21（初版），2026-10-22（HUD / 技能栏 / 失败线 / 无首页 / 奖励砖必掉复核）
 - 范围：`apps/game`、`packages/shared`、`scripts/`、三端产物
-- 结论：数据层、三端构建、产物 smoke 与 web 浏览器全流程通过；2026-10-22 复核覆盖固定四格技能栏、空槽广告补给、失败线下移与 HUD 精简。真机、真实广告 SDK、平台分享、低端机性能与关卡美术人工走查待用户执行。
+- 结论：数据层、三端构建、产物 smoke 与 web 浏览器全流程通过；2026-10-22 复核覆盖固定四格技能栏、空槽广告补给、失败线下移、HUD 精简、移除首页与奖励砖必掉。真机、真实广告 SDK、平台分享、低端机性能与关卡美术人工走查待用户执行。
 
 ## 环境
 
@@ -19,7 +19,7 @@
 
 | 命令 | 结果 |
 |---|---|
-| `corepack pnpm test` | 46 项全部通过（shared 26 项 / 3 个文件；game 20 项 / 5 个文件） |
+| `corepack pnpm test` | 47 项全部通过（shared 27 项 / 3 个文件；game 20 项 / 5 个文件） |
 | `corepack pnpm build` | web / wechat / douyin 三端构建成功 |
 | `node scripts/verify-dist.mjs` | OK：产物存在、探针隔离、版本注入、单包结构（无分包字段）、体积预警线 |
 | `node --check`（本轮修改文件） | 通过 |
@@ -28,7 +28,7 @@
 
 | 产物 | 单包 |
 |---|---|
-| `dist/web` | 0.44MB |
+| `dist/web` | 0.43MB |
 | `dist/wechat` | 0.44MB |
 | `dist/douyin` | 0.44MB |
 
@@ -50,12 +50,12 @@
 | 3 | 清除率不计障碍、100% 过关 | `physics.test.mjs`「障碍不计入清除率分母，破坏完触发过关」 | 通过 |
 | 4 | 8 球上限、球球碰撞无粘连 | `physics.test.mjs` 对应用例 | 通过 |
 | 5 | 球色伤害 / 分裂规则 | `physics.test.mjs`「球色：蓝对硬砖 1 伤，红对硬砖 2 伤，绿命中分裂」 | 通过（规则层） |
-| 6 | 四格技能栏、充能上限、掉落与释放 | `physics.test.mjs` 技能、奖励掉落、充能用例 | 通过 |
+| 6 | 四格技能栏、充能上限、奖励砖必掉与释放 | `physics.test.mjs`「每块奖励砖必掉技能充能，可被挡板拾取」「四格技能满时奖励砖不再生成掉落物」及技能用例 | 通过 |
 | 7 | 存档往返、旧金币字段丢弃、损坏降级 | `packages/shared/test/save.test.mjs` | 通过 |
 | 8 | 三个广告点位（复活 / 额外球 / 技能补给）与广告暂停 | web 模拟广告浏览器核验 + 平台测试 | 通过（模拟链路） |
 | 9 | 30 关 schema、主题、可破坏数 | `scripts/validate-levels.js`、`apps/game/test/levels.test.mjs` | 通过 |
 | 10 | demo1 三视口静态走查 | Ticket 02 记录（390×844 / 768×1024 / 750×1334） | 通过 |
-| 11 | 浏览器全流程、控制台无报错 | 下表 | 通过 |
+| 11 | 无首页、浏览器全流程、控制台无报错 | 下表 | 通过 |
 | 12 | 真机走查清单 | [`device-checklist.md`](device-checklist.md) | 已产出 |
 | 13 | 卡片铺底、失败线与手势接管 | `apps/game/test/render.test.mjs` + 浏览器真实 PointerEvent（见下节） | 通过 |
 
@@ -65,16 +65,16 @@
 
 清空 `localStorage['mosaic.save.v1']` 后，以 `window.__MOSAIC_DEBUG__` 驱动：
 
-1. 主页加载：`scene=home`，默认存档 `{highestLevel:1,sound:true,music:true}`，无 `coins` / `slotCapacity`；主页信息卡为「最高关 1/30」「技能栏 4 格常驻」，分享按钮通栏。
-2. 点击继续 → 第 1 关预开局弹层：232 块可破坏砖，`phase=ready`。
-3. 开始 → 点击棋盘发球：`phase=playing`，清除率上升，bitmap-cache 建立（命中/破碎后重建）。
-4. 球越过失败线 → 失败弹层；点击复活 → 广告遮罩 `adBusy=true`，模拟广告后 `phase=ready / reviveUsed=true / docked=[true]`。
-5. `forceClear` → 过关弹层：只推进 `highestLevel`，不再结算金币；「下一关」进入第 2 关。
-6. 暂停 → 六按钮暂停面板；音效/音乐开关持久化；分享调用返回 `false`（桌面 Chromium 无 `navigator.share`）并显示回退提示，无异常。
-7. 点击空技能格 → `modal=skillCharge / paused=true / chargingSkill=i`；取消后恢复 `paused=false`、充能不变。
-8. 再次点击空技能格 → 「看广告补充」→ 广告中 `modal=ad / adBusy=true / paused=true`，`sim.time` 在广告前后保持 `0.2333` 不变；结束后 `charges[i]=1 / modal=null / paused=false`。
-9. 点击已充能格 → `charges[i]=0`，对应效果计时开始（激光 10s / 加宽 15s / 减速 10s），多球球数增加且不超过 8。
-10. 控制台仅 `[game] boot 0.1.0`、`[boot] home 0.1.0`，无 error / warning（404 为 favicon，忽略）。
+1. 冷启动直达局内：`scene=play / levelId=1 / phase=ready`，默认存档 `{highestLevel:1,sound:true,music:true}`，无 `coins` / `slotCapacity`；预开局弹层只有「开始」「看广告 +1 球」，无首页。
+2. 点击开始 → `modal=null / paused=false`；点击棋盘发球 → `phase=playing`，清除率上升，bitmap-cache 建立（命中/破碎后重建）。
+3. `forceFail` → 失败弹层，按钮仅 `revive / retry`；点击复活 → 广告遮罩 `adBusy=true / paused=true`，模拟广告后 `phase=ready / reviveUsed=true / modal=null`。
+4. `forceClear` → 过关弹层，按钮仅 `next`，只推进 `highestLevel`，不再结算金币；「下一关」进入第 2 关预开局。
+5. 暂停 → 五按钮暂停面板（继续 / 音效 / 音乐 / 分享 / 重开），无「返回主页」；音效/音乐开关持久化；分享调用返回 `false`（桌面 Chromium 无 `navigator.share`）并显示回退提示，无异常。
+6. 点击空技能格 → `modal=skillCharge / paused=true / chargingSkill=i`；取消后恢复 `paused=false`、充能不变。
+7. 再次点击空技能格 → 「看广告补充」→ 广告中 `modal=ad / adBusy=true / paused=true`，`sim.time` 在广告前后保持 `0.2333` 不变；结束后 `charges[i]=1 / modal=null / paused=false`。
+8. 点击已充能格 → `charges[i]=0`，对应效果计时开始（激光 10s / 加宽 15s / 减速 10s），多球球数增加且不超过 8。
+9. 四类弹层按钮实测：预开局 `start / extraBall`，暂停 `resume / sound / music / share / restart`，结算 `next`，失败 `revive / retry`；均无首页入口。
+10. 控制台仅 `[game] boot 0.1.0`、`[boot] play 0.1.0`，无 error / warning（404 为 favicon，忽略）。
 
 ## 界面铺底、失败线与手势接管核验（2026-10-21，2026-10-22 复核）
 
@@ -105,7 +105,7 @@
 ## 数据层覆盖摘要
 
 - 物理：同种子同输入 600 步逐帧一致；球-砖正面/侧面/角落、球-墙三面、挡板左中右、球-球对心碰撞与位置分离；自定义 `failY` 下球与掉落物落到失败线即移除（默认值等于棋盘高，兼容旧用例）。
-- 规则：球数上限、三色球、清除率、过关/失败、复活一次、四技能充能（每格上限 1、拾取与广告补充、使用消耗）、奖励砖只掉技能充能、关卡内充能不持久化。
+- 规则：球数上限、三色球、清除率、过关/失败、复活一次、四技能充能（每格上限 1、拾取与广告补充、使用消耗）、每块奖励砖必掉技能充能、四格全满时不生成掉落并发出 `skillFull`、关卡内充能不持久化。
 - 存档：默认结构、序列化往返、损坏/缺字段/越界降级、损坏回写、旧档 `coins` / `slotCapacity` 等未知字段丢弃且 `highestLevel` 保留。
 - 关卡：30 关 schema、主题数量、难度递增、网格边界；PNG 管线量化与解析。
 - 渲染契约：布局在 1334/1400/1624/1900 设计高度下坐标合法；游戏面板与棋盘同宽铺到设计底边、分隔线等于技能栏上沿、`failY = dividerY − board.y`、四格技能 165×112 等宽贴齐棋盘、按钮在左上、操作区通宽、技能格避让 `safeBottom`；砖块四态、HUD、技能栏、弹层坐标均为有限值。
@@ -129,7 +129,7 @@
 建议素材清单（真机或 750 宽浏览器环境，统一竖屏原图）：
 
 1. 启动 loading（版本号可见）。
-2. 主页（最高关、技能栏 4 格常驻说明、音效/音乐开关）。
+2. 冷启动直达的预开局弹层（关卡号、主题、技能栏 4 格常驻）。
 3. 局内 HUD + 宝石砖块 + 四格技能栏（优先选含硬砖、障碍、奖励砖的关卡）。
 4. 失败面板 + 复活广告入口。
 5. 过关结算 + 下一关入口。

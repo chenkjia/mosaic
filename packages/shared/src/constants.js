@@ -42,7 +42,7 @@ export const SKILL = {
 };
 
 export const RULES = {
-  skillDropChance: 0.5,
+  skillDropChance: 1,
   launchAngleDeg: 75,
   launchJitterDeg: 5,
   bounceMinDeg: 15,
