@@ -29,3 +29,9 @@ Status: done
 - 验收项口径修正：原「挡板跟随手指，点击发球」按触点位置过滤，手指滑出棋盘即断手；改为操作区（HUD 下沿到屏幕最底、左右贴屏）内按下即接管挡板、跟随到抬手，空白处按下同时发球。
 - 产物：`layout.js` 新增 `panel` 矩形（通宽铺到设计底边，兼作操作区判定）与 `safeBottom` 避让；`play.js` 拆出 `drawPanel`（棋盘圆角底面叠在其上）与手势接管状态 `dragId`；`platform/{web,minigame}.js` 指针事件补 `id` 与 `cancel`，小游戏端逐 `changedTouches` 上报。
 - 验证：`render.test.mjs` 44 条通过（新增面板铺底与安全区避让两组）；浏览器真实 PointerEvent 断言拖到设计底边 `dragging` 保持、抬手保留、第二指不抢、HUD 空白不动挡板；`build` + `verify:dist` 三端通过。对应 REQ-001 验收标准第 13 项。
+
+## 后续变更（2026-10-22）
+
+- 触发：用户复核后仍觉得游戏区没铺到屏幕底——判定区已到底，但视觉主体（棋盘卡片）止于 y=1112，低 alpha 底衬看不出延伸。经 grilling 定案 Q36–Q38：一张卡铺到底、卡内保留分隔线、卡片与棋盘同宽 714（取代 2026-10-21 的通宽面板与双层底面）。
+- 产物：`layout.js` 的 `panel` 改为与棋盘同宽、铺到物理底，新增通宽 `operation` 与 `dividerY`；`play.js` 单卡填充 + 分隔线绘制，删掉棋盘独立圆角底面，命中判定改用 `operation`，`debugRects` 暴露 `operation / dividerY`。
+- 验证：44/44 单测通过（卡片同宽触底、分隔线、操作区通宽、安全区避让）；`build` + `verify:dist` 三端通过；375×812 fit 与 701×781 fallback 截图确认卡片触底；真实 PointerEvent 断言卡片两侧窄边可起手、拖到卡片外仍保持接管、抬手保留。对应 REQ-001 验收标准第 13 项。

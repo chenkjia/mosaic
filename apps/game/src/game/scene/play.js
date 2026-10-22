@@ -528,7 +528,7 @@ export function createPlayScene(deps) {
   }
 
   function inOperation(event) {
-    const area = layout.panel;
+    const area = layout.operation;
     return event.x >= area.x && event.x <= area.x + area.w
       && event.y >= area.y && event.y <= area.y + area.h;
   }
@@ -648,23 +648,28 @@ export function createPlayScene(deps) {
     const panel = layout.panel;
     // 下沿多画一个半径，让底部圆角落在屏外，可见部分只剩顶部两角
     roundRectPath(ctx, panel.x, panel.y, panel.w, panel.h + 20, 20);
-    ctx.fillStyle = 'rgba(255,255,255,0.20)';
+    ctx.fillStyle = 'rgba(255,255,255,0.40)';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.42)';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = C.line;
+    ctx.lineWidth = 1;
     ctx.stroke();
+  }
+
+  function drawDivider(ctx) {
+    const panel = layout.panel;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(91,75,196,0.18)';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(panel.x + 20, layout.dividerY);
+    ctx.lineTo(panel.x + panel.w - 20, layout.dividerY);
+    ctx.stroke();
+    ctx.restore();
   }
 
   function drawBoard(ctx) {
     const board = layout.board;
-    ctx.fillStyle = 'rgba(255,255,255,0.34)';
-    roundRectPath(ctx, board.x, board.y, board.w, board.h, 20);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(91,75,196,0.16)';
-    ctx.lineWidth = 1;
-    roundRectPath(ctx, board.x, board.y, board.w, board.h, 20);
-    ctx.stroke();
-
     const key = levelId + '|' + brickVersion + '|' + view.scale.toFixed(3);
     const bitmap = cache.get(key, board.w, board.h, view.scale, (c) => {
       for (let i = 0; i < sim.bricks.length; i += 1) {
@@ -829,6 +834,7 @@ export function createPlayScene(deps) {
     drawBackground(ctx, v);
     drawPanel(ctx);
     drawBoard(ctx);
+    drawDivider(ctx);
     drawDrops(ctx);
     beams.draw(ctx);
     drawBalls(ctx);
@@ -899,6 +905,8 @@ export function createPlayScene(deps) {
     return {
       board: layout.board,
       panel: layout.panel,
+      operation: layout.operation,
+      dividerY: layout.dividerY,
       pause: layout.pause,
       skills: layout.skill.slots,
       modal: modal ? modalLayout(modal, view) : null,

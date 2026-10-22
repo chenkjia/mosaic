@@ -28,7 +28,9 @@ export function computePlayLayout(view) {
   }
   return {
     hud: { x: 0, y: 0, w: view.w, h: HUD_H },
-    panel: { x: bleed.x, y: panelTop, w: bleed.w, h: panelBottom - panelTop },
+    panel: { x: board.x, y: panelTop, w: board.w, h: panelBottom - panelTop },
+    operation: { x: bleed.x, y: panelTop, w: bleed.w, h: panelBottom - panelTop },
+    dividerY: board.y + board.h,
     board,
     pause: { x: 648, y: 36, w: 64, h: 64 },
     coin: { x: 486, y: 42, w: 146, h: 52 },
