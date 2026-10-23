@@ -51,8 +51,8 @@ export function createGameApp(platform) {
         rects: play.debugRects(),
       });
     },
-    setCharges(values) {
-      return play.debugSetCharges(values);
+    setSkillStacks(values) {
+      return play.debugSetSkillStacks(values);
     },
     startLevel(id) {
       play.start(id);
@@ -69,6 +69,9 @@ export function createGameApp(platform) {
     },
     useSkill(index) {
       return play.debugUseSkill(index);
+    },
+    castSkill(index) {
+      return play.debugCastSkill(index);
     },
     triggerDebuff(kind) {
       return play.debugTriggerDebuff(kind);

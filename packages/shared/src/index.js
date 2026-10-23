@@ -10,8 +10,8 @@ export {
   gridToBricks, quantizeGrid,
 } from './level.js';
 export {
-  createState, step, addBall, revive, activateSkill, addSkillCharge,
-  triggerDebuff, clearPercent, hashState,
+  createState, step, addBall, revive, castSkill, skillCanCast, skillMultiplier,
+  syncPaddleWidth, triggerDebuff, hashState,
 } from './physics.js';
 export {
   SAVE_KEY, defaultSave, migrate, migrateWithStatus, serialize,

@@ -23,7 +23,6 @@ export const PADDLE = {
   w: 150,
   h: 22,
   bottomGap: 40,
-  wideScale: 1.4,
 };
 
 export const STEP = 1 / 120;
@@ -33,10 +32,13 @@ export const SKILL_SLOTS = 4;
 export const SKILL_IDS = ['multiBall', 'widePaddle', 'split', 'slow'];
 
 export const SKILL = {
-  wideDuration: 15,
+  wideStep: 0.4,
+  wideCap: 2.0,
+  wideMaxStacks: 3,
+  slowScale: 0.85,
+  slowFloor: 0.5,
+  slowMaxStacks: 5,
   splitAngleDeg: 30,
-  slowDuration: 10,
-  slowScale: 0.7,
   splitCooldown: 0.3,
 };
 
@@ -44,14 +46,10 @@ export const DEBUFF_IDS = ['shrink', 'speed', 'reverse'];
 
 export const DEBUFF = {
   shrinkScale: 0.65,
-  shrinkDuration: 8,
   speedScale: 1.3,
-  speedDuration: 8,
-  reverseDuration: 6,
 };
 
 export const RULES = {
-  skillDropChance: 1,
   launchAngleDeg: 75,
   launchJitterDeg: 5,
   bounceMinDeg: 15,

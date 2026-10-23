@@ -8,17 +8,17 @@ export function activeDebuffs(sim) {
   const items = [];
   for (let i = 0; i < ORDER.length; i += 1) {
     const kind = ORDER[i];
-    const until = sim.effects[kind + 'Until'];
-    if (until && sim.time < until) {
-      items.push({ kind, remain: until - sim.time, meta: EFFECT_META[kind] });
+    const stacks = sim.debuffs[kind];
+    if (stacks > 0) {
+      items.push({ kind, stacks, meta: EFFECT_META[kind] });
     }
   }
   return items;
 }
 
-function drawGlyph(ctx, kind, cx, cy) {
-  ctx.strokeStyle = C.white;
-  ctx.fillStyle = C.white;
+export function drawDebuffIcon(ctx, kind, cx, cy, color) {
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
   ctx.lineWidth = 1.7;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
@@ -58,7 +58,7 @@ function drawGlyph(ctx, kind, cx, cy) {
 
 export function drawDebuffBar(ctx, layout, items) {
   if (!items || items.length === 0) return;
-  const widths = items.map((item) => 34 + item.meta.short.length * 18 + 36);
+  const widths = items.map((item) => 34 + item.meta.short.length * 18 + 34);
   let total = 0;
   for (let i = 0; i < widths.length; i += 1) total += widths[i];
   total += (items.length - 1) * 10;
@@ -76,12 +76,12 @@ export function drawDebuffBar(ctx, layout, items) {
     roundRectPath(ctx, x, y, w, H, H / 2);
     ctx.stroke();
 
-    drawGlyph(ctx, item.kind, x + 17, y + H / 2);
+    drawDebuffIcon(ctx, item.kind, x + 17, y + H / 2, C.white);
     ctx.fillStyle = C.white;
     ctx.font = FONT.tinyBold;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(item.meta.short + ' ' + Math.ceil(item.remain) + 's', x + 30, y + H / 2 + 1);
+    ctx.fillText(item.meta.short + ' ×' + item.stacks, x + 30, y + H / 2 + 1);
     x += w + 10;
   }
 }

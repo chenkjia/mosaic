@@ -1,6 +1,7 @@
 import {
-  BOARD, LEVEL_COUNT, MAX_STEPS_PER_FRAME, SKILL_IDS, STEP,
-  activateSkill, addBall, addSkillCharge, clearPercent, createState, revive, step, triggerDebuff,
+  BOARD, LEVEL_COUNT, MAX_STEPS_PER_FRAME, SKILL, SKILL_IDS, STEP,
+  castSkill, createState, revive, skillCanCast, skillMultiplier, step, syncPaddleWidth,
+  triggerDebuff,
 } from '@mosaic/shared';
 import LEVELS from '../../data/levels.json';
 import { createBitmapCache } from '../../gfx/bitmapCache.js';
@@ -9,11 +10,11 @@ import { createParticles } from '../../gfx/particles.js';
 import { roundRectPath } from '../../gfx/roundRect.js';
 import { computePlayLayout } from '../layout.js';
 import { hitRect } from '../../ui/button.js';
-import { activeDebuffs, drawDebuffBar } from '../../ui/debuffBar.js';
+import { activeDebuffs, drawDebuffBar, drawDebuffIcon } from '../../ui/debuffBar.js';
 import { drawHud } from '../../ui/hud.js';
 import { drawModal, hitModal, modalLayout } from '../../ui/modal.js';
-import { drawSkillBar, hitSkill } from '../../ui/skillBar.js';
-import { C, EFFECT_META, FONT, SKILL_META, THEME_LABEL } from '../../ui/theme.js';
+import { drawSkillBar, drawSkillIcon, formatMultiplier, hitSkill } from '../../ui/skillBar.js';
+import { C, EFFECT_META, SKILL_META, THEME_LABEL } from '../../ui/theme.js';
 import { createToast } from '../../ui/toast.js';
 
 const BALL_COLORS = {
@@ -22,7 +23,6 @@ const BALL_COLORS = {
   green: C.mintDeep,
 };
 const GEM_OPTIONS = { radius: 7, light: C.white, dark: C.ink };
-const TAP_SLOP = 18;
 const LEVEL_BY_ID = new Map();
 for (let i = 0; i < LEVELS.length; i += 1) LEVEL_BY_ID.set(LEVELS[i].id, LEVELS[i]);
 
@@ -61,15 +61,12 @@ export function createPlayScene(deps) {
   let acc = 0;
   let paddleTarget = null;
   let dragId = null;
-  let slotPress = null;
   let launchQueued = false;
   let brickVersion = 0;
   let clearAt = 0;
   let failAt = 0;
   let failShown = false;
   let settled = false;
-  let extraBallBought = false;
-  let pendingSkill = -1;
   let bgKey = '';
   let background = null;
 
@@ -89,15 +86,12 @@ export function createPlayScene(deps) {
     acc = 0;
     paddleTarget = sim.paddle.x;
     dragId = null;
-    slotPress = null;
     launchQueued = false;
     brickVersion = 0;
     clearAt = 0;
     failAt = 0;
     failShown = false;
     settled = false;
-    extraBallBought = false;
-    pendingSkill = -1;
     particles.reset();
     toast.clear();
     cache.clear();
@@ -116,29 +110,24 @@ export function createPlayScene(deps) {
       ],
       buttons: [
         { id: 'start', label: '开始', kind: 'primary' },
-        {
-          id: 'extraBall',
-          label: extraBallBought ? '本关已加 1 颗球' : '看广告 +1 球',
-          kind: extraBallBought ? 'disabled' : 'mint',
-          disabled: extraBallBought,
-        },
       ],
-      note: '额外球只影响本关初始球',
     };
+  }
+
+  function skillLine() {
+    const wide = formatMultiplier(skillMultiplier(sim, 'widePaddle')) + ' 加宽';
+    const slow = formatMultiplier(skillMultiplier(sim, 'slow')) + ' 减速';
+    return '技能 ' + wide + ' · ' + slow;
   }
 
   function pauseModal() {
     const save = store.get();
-    let charged = 0;
-    for (let i = 0; i < sim.charges.length; i += 1) {
-      if (sim.charges[i] > 0) charged += 1;
-    }
     return {
       kind: 'pause',
       title: '已暂停',
-      subtitle: '第 ' + levelId + ' 关 · 清除 ' + clearPercent(sim) + '%',
+      subtitle: '第 ' + levelId + ' 关 · 剩余 ' + sim.stats.left + ' / ' + sim.stats.total,
       lines: [
-        { text: '技能充能 ' + charged + ' / ' + SKILL_IDS.length, color: C.muted },
+        { text: skillLine(), color: C.muted },
       ],
       buttons: [
         { id: 'resume', label: '继续游戏', kind: 'primary' },
@@ -156,7 +145,7 @@ export function createPlayScene(deps) {
     return {
       kind: 'result',
       title: allDone ? '全部关卡完成' : '过关！',
-      subtitle: '第 ' + levelId + ' 关 · 清除 100%',
+      subtitle: '第 ' + levelId + ' 关 · 可破坏砖已清空',
       lines: [
         {
           text: allDone ? '30 关全部通关' : '下一关 · 第 ' + (levelId + 1) + ' 关',
@@ -178,7 +167,7 @@ export function createPlayScene(deps) {
       title: '挑战失败',
       subtitle: '球全部越过了失败线',
       lines: [
-        { text: '本关清除 ' + clearPercent(sim) + '%', color: C.muted },
+        { text: '剩余 ' + sim.stats.left + ' / ' + sim.stats.total + ' 可破坏', color: C.muted },
         { text: '复活每关仅一次', color: C.soft },
       ],
       buttons: [
@@ -190,32 +179,16 @@ export function createPlayScene(deps) {
         },
         { id: 'retry', label: '重来一局', kind: 'secondary' },
       ],
-      note: '重来一局会重置本关技能充能',
+      note: '重来一局会重置本关技能与减益',
     };
   }
 
-  function chargeModal(index) {
-    const skill = SKILL_IDS[index];
-    const meta = SKILL_META[skill];
-    return {
-      kind: 'skillCharge',
-      title: '补充技能',
-      subtitle: meta.label + ' · ' + meta.tip,
-      lines: [
-        { text: '看一段广告，获得 1 次使用', bold: true, color: C.primary },
-        { text: '广告期间整局暂停', color: C.muted },
-      ],
-      buttons: [
-        { id: 'adSkill', label: '看广告补充', kind: 'mint' },
-        { id: 'cancelSkill', label: '取消', kind: 'ghost' },
-      ],
-      note: '每格最多储存 1 次',
-    };
-  }
-
-  function adModal(placement) {
-    const reward = placement === 'revive' ? '复活 +1 球'
-      : placement === 'extraBall' ? '开局 +1 球' : '补充 1 次技能';
+  function adModal(placement, skill) {
+    let reward = '复活 +1 球';
+    if (placement === 'skill') {
+      const meta = SKILL_META[skill];
+      reward = meta ? meta.label + ' 立即施放' : '技能施放';
+    }
     return {
       kind: 'ad',
       title: '广告播放中',
@@ -260,7 +233,6 @@ export function createPlayScene(deps) {
     paused = true;
     acc = 0;
     dragId = null;
-    slotPress = null;
   }
 
   function openFail() {
@@ -269,10 +241,10 @@ export function createPlayScene(deps) {
     modal = failModal();
   }
 
-  function runAd(placement) {
+  function runAd(placement, skill) {
     if (adBusy) return Promise.resolve(false);
     adBusy = true;
-    modal = adModal(placement);
+    modal = adModal(placement, skill);
     return Promise.resolve(platform.showRewardedAd(placement))
       .then((ok) => {
         adBusy = false;
@@ -284,49 +256,34 @@ export function createPlayScene(deps) {
       });
   }
 
-  function watchExtraBall() {
-    if (extraBallBought || adBusy) return Promise.resolve(false);
-    return runAd('extraBall').then((ok) => {
-      if (ok) {
-        extraBallBought = true;
-        const ball = addBall(sim, 'blue', true);
-        toast.show(ball ? '本关 +1 颗球' : '球数已达上限');
-      } else {
-        toast.show('广告未看完，未获得额外球');
-      }
-      modal = preRoundModal();
-      return ok;
-    });
+  function skillUnavailableText(skill) {
+    if (skill === 'split') return '没有运动中的球';
+    return (SKILL_META[skill] ? SKILL_META[skill].label : skill) + '已满';
   }
 
-  function watchSkillCharge() {
-    if (pendingSkill < 0 || adBusy) return Promise.resolve(false);
-    const index = pendingSkill;
+  function watchSkill(index) {
+    if (adBusy || !sim) return Promise.resolve(false);
+    if (sim.phase === 'cleared' || sim.phase === 'failed') return Promise.resolve(false);
     const skill = SKILL_IDS[index];
-    return runAd('skillCharge').then((ok) => {
+    if (!skillCanCast(sim, skill)) {
+      toast.show(skillUnavailableText(skill));
+      return Promise.resolve(false);
+    }
+    pauseForModal();
+    return runAd('skill', skill).then((ok) => {
       if (ok) {
-        const added = addSkillCharge(sim, skill);
-        const meta = SKILL_META[skill];
-        toast.show(added.ok ? meta.label + '已补充 · 点击下方释放' : '该技能已就绪');
-        audio.play('skill');
+        const result = castSkill(sim, skill);
+        if (result.ok) handleEvents(result.events);
+        else toast.show(skillUnavailableText(skill));
       } else {
-        toast.show('广告未看完，未获得技能');
+        toast.show('广告未看完，技能未施放');
       }
-      pendingSkill = -1;
       modal = null;
       paused = false;
       acc = 0;
       lastNow = 0;
       return ok;
     });
-  }
-
-  function cancelSkillCharge() {
-    pendingSkill = -1;
-    modal = null;
-    paused = false;
-    acc = 0;
-    lastNow = 0;
   }
 
   function watchRevive() {
@@ -351,8 +308,6 @@ export function createPlayScene(deps) {
   function handleAction(id) {
     if (id === 'start') {
       beginRound();
-    } else if (id === 'extraBall') {
-      watchExtraBall();
     } else if (id === 'resume') {
       resume();
     } else if (id === 'restart') {
@@ -371,10 +326,6 @@ export function createPlayScene(deps) {
       });
     } else if (id === 'next') {
       nextLevel();
-    } else if (id === 'adSkill') {
-      watchSkillCharge();
-    } else if (id === 'cancelSkill') {
-      cancelSkillCharge();
     } else if (id === 'revive') {
       watchRevive();
     } else if (id === 'retry') {
@@ -416,18 +367,19 @@ export function createPlayScene(deps) {
           break;
         case 'wallHit':
           break;
-        case 'skillPickup': {
+        case 'skillFull':
+          toast.show('四个技能都已满级');
+          break;
+        case 'skillWasted': {
           const meta = SKILL_META[event.skill];
-          toast.show((meta ? meta.label : event.skill) + '已就绪 · 点击下方释放');
-          audio.play('skill');
+          toast.show((meta ? meta.label : event.skill) + '已满级 · 本次作废');
           break;
         }
-        case 'skillFull':
-          toast.show(event.skill ? '该技能已就绪' : '四个技能都已就绪');
-          break;
         case 'skillUsed': {
           const meta = SKILL_META[event.skill];
           spawnAt(sim.paddle.x, sim.paddle.y - sim.paddle.h / 2, meta ? meta.color : C.white, 8, 1);
+          toast.show('已施放 · ' + (meta ? meta.label : event.skill));
+          audio.play('skill');
           break;
         }
         case 'ballSpawned': {
@@ -440,7 +392,6 @@ export function createPlayScene(deps) {
           break;
         case 'debuffTriggered': {
           const meta = EFFECT_META[event.debuff];
-          toast.show((meta ? meta.label : event.debuff) + ' ' + Math.round(event.duration) + ' 秒');
           spawnAt(event.x, event.y, meta ? meta.color : C.danger, 12, 1.1);
           audio.play('debuff');
           break;
@@ -455,28 +406,6 @@ export function createPlayScene(deps) {
           break;
       }
     }
-  }
-
-  function useSkill(index) {
-    if (!sim || sim.phase === 'cleared' || sim.phase === 'failed') return;
-    if (sim.charges[index] > 0) {
-      const result = activateSkill(sim, index);
-      if (!result.ok) {
-        if (result.reason === 'noMovingBall') toast.show('没有运动中的球');
-        return;
-      }
-      handleEvents(result.events);
-      const blocked = result.events.some((event) => event.type === 'splitBlocked');
-      if (!blocked) {
-        const meta = SKILL_META[result.skill];
-        toast.show('已使用 · ' + (meta ? meta.label : result.skill));
-      }
-      audio.play('skill');
-      return;
-    }
-    pendingSkill = index;
-    pauseForModal();
-    modal = chargeModal(index);
   }
 
   function pointerIdOf(event) {
@@ -499,7 +428,6 @@ export function createPlayScene(deps) {
     const id = pointerIdOf(event);
     if (modal) {
       dragId = null;
-      slotPress = null;
       if (event.type !== 'start') return;
       const action = hitModal(modal, view, event.x, event.y);
       if (action) handleAction(action);
@@ -514,15 +442,7 @@ export function createPlayScene(deps) {
       }
       const slot = hitSkill(layout, event.x, event.y);
       if (slot >= 0) {
-        if (slotPress === null) {
-          slotPress = {
-            id,
-            index: slot,
-            charged: sim.charges[slot] > 0,
-            x: event.x,
-            y: event.y,
-          };
-        }
+        watchSkill(slot);
         return;
       }
       if (dragId !== null) return;
@@ -533,35 +453,14 @@ export function createPlayScene(deps) {
       return;
     }
     if (event.type === 'move') {
-      if (slotPress && id === slotPress.id) {
-        const slot = hitSkill(layout, event.x, event.y);
-        const dx = event.x - slotPress.x;
-        const dy = event.y - slotPress.y;
-        if (slot !== slotPress.index || dx * dx + dy * dy > TAP_SLOP * TAP_SLOP) slotPress = null;
-        return;
-      }
       if (id === dragId) movePaddleTo(event.x);
       return;
     }
-    if (event.type === 'end' && slotPress && id === slotPress.id) {
-      const press = slotPress;
-      slotPress = null;
-      const slot = hitSkill(layout, event.x, event.y);
-      const dx = event.x - press.x;
-      const dy = event.y - press.y;
-      if (slot === press.index && dx * dx + dy * dy <= TAP_SLOP * TAP_SLOP) {
-        const charged = sim.charges[press.index] > 0;
-        if (charged === press.charged) useSkill(press.index);
-        else if (charged) toast.show('技能已就绪 · 点击下方释放');
-      }
-    }
     if (id === dragId) dragId = null;
-    if (slotPress && id === slotPress.id) slotPress = null;
   }
 
   function onHide() {
     dragId = null;
-    slotPress = null;
     if (modal && modal.kind !== 'pause') {
       // 切后台时停掉结算倒计时，回来后让用户自己点下一关。
       if (modal.kind === 'result') modal.autoAt = 0;
@@ -689,11 +588,15 @@ export function createPlayScene(deps) {
       const x = BOARD.x + drop.x;
       const y = BOARD.y + drop.y;
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      const debuff = drop.kind === 'debuff';
+      const meta = debuff ? EFFECT_META[drop.debuff] : SKILL_META[drop.skill];
+      if (!meta) continue;
+
       ctx.fillStyle = 'rgba(42,35,68,0.16)';
       ctx.beginPath();
       ctx.arc(x + 1, y + 3, drop.r, 0, Math.PI * 2);
       ctx.fill();
-      const meta = SKILL_META[drop.skill] || SKILL_META.multiBall;
+
       const r = drop.r + 3;
       ctx.beginPath();
       ctx.moveTo(x, y - r);
@@ -701,16 +604,18 @@ export function createPlayScene(deps) {
       ctx.lineTo(x, y + r);
       ctx.lineTo(x - r, y);
       ctx.closePath();
-      ctx.fillStyle = meta.color;
+      ctx.fillStyle = debuff ? C.danger : C.gold;
       ctx.fill();
       ctx.strokeStyle = 'rgba(255,255,255,0.72)';
       ctx.lineWidth = 1.4;
       ctx.stroke();
-      ctx.fillStyle = C.white;
-      ctx.font = FONT.slot;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(meta.short, x, y + 1);
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(0.62, 0.62);
+      if (debuff) drawDebuffIcon(ctx, drop.debuff, 0, 0, C.white);
+      else drawSkillIcon(ctx, drop.skill, 0, 0, C.white);
+      ctx.restore();
     }
   }
 
@@ -758,9 +663,9 @@ export function createPlayScene(deps) {
     const h = paddle.h;
     const x = BOARD.x + paddle.x;
     const y = BOARD.y + paddle.y;
-    const wide = sim.time < sim.effects.wideUntil;
-    const shrink = sim.time < sim.effects.shrinkUntil;
-    const reverse = sim.time < sim.effects.reverseUntil;
+    const wide = sim.skillStacks.widePaddle > 0;
+    const shrink = sim.debuffs.shrink > 0;
+    const reverse = sim.debuffs.reverse > 0;
     const tint = shrink ? C.orange : reverse ? C.violet : wide ? C.blue : C.lavender;
 
     ctx.fillStyle = 'rgba(42,35,68,0.18)';
@@ -807,7 +712,6 @@ export function createPlayScene(deps) {
 
     drawHud(ctx, layout, {
       levelId,
-      percent: clearPercent(sim),
       left: sim.stats.left,
       total: sim.stats.total,
     });
@@ -830,11 +734,14 @@ export function createPlayScene(deps) {
       modal: modal ? modal.kind : null,
       adBusy,
       settled,
-      extraBallBought,
-      chargingSkill: pendingSkill,
       highestLevel: store.get().highestLevel,
       failY: sim.failY,
-      charges: sim.charges.slice(),
+      skillStacks: Object.assign({}, sim.skillStacks),
+      skillMultipliers: {
+        widePaddle: skillMultiplier(sim, 'widePaddle'),
+        slow: skillMultiplier(sim, 'slow'),
+      },
+      skillCanCast: SKILL_IDS.map((skill) => skillCanCast(sim, skill)),
       skills: SKILL_IDS.slice(),
       balls: sim.balls.length,
       ballKinds: sim.balls.map((ball) => ball.kind),
@@ -847,18 +754,16 @@ export function createPlayScene(deps) {
       lastNow,
       launchQueued,
       docked: sim.balls.map((ball) => ball.docked),
-      percent: clearPercent(sim),
       left: sim.stats.left,
       total: sim.stats.total,
-      debuffs: info.debuff,
+      debuffBricks: info.debuff,
+      debuffs: Object.assign({}, sim.debuffs),
       reviveUsed: sim.reviveUsed,
-      effects: {
-        wide: Math.max(0, sim.effects.wideUntil - sim.time),
-        slow: Math.max(0, sim.effects.slowUntil - sim.time),
-        shrink: Math.max(0, sim.effects.shrinkUntil - sim.time),
-        speed: Math.max(0, sim.effects.speedUntil - sim.time),
-        reverse: Math.max(0, sim.effects.reverseUntil - sim.time),
-      },
+      drops: sim.drops.map((drop) => ({
+        kind: drop.kind,
+        skill: drop.skill || null,
+        debuff: drop.debuff || null,
+      })),
       cacheBuilds: cache.stats().builds,
     };
   }
@@ -895,10 +800,6 @@ export function createPlayScene(deps) {
       resume();
       return true;
     }
-    if (modal.kind === 'skillCharge') {
-      cancelSkillCharge();
-      return true;
-    }
     return false;
   }
 
@@ -912,7 +813,6 @@ export function createPlayScene(deps) {
       brick.alive = false;
     }
     sim.stats.left = 0;
-    sim.stats.destroyed = sim.stats.total;
     sim.phase = 'cleared';
     brickVersion += 1;
     cache.clear();
@@ -935,9 +835,15 @@ export function createPlayScene(deps) {
   }
 
   function debugUseSkill(index) {
-    if (!sim) return false;
-    useSkill(index);
-    return true;
+    return watchSkill(index);
+  }
+
+  function debugCastSkill(index) {
+    if (!sim) return null;
+    const skill = SKILL_IDS[index];
+    const result = castSkill(sim, skill);
+    if (result.ok) handleEvents(result.events);
+    return result;
   }
 
   function debugTriggerDebuff(kind) {
@@ -951,12 +857,16 @@ export function createPlayScene(deps) {
     return event;
   }
 
-  function debugSetCharges(values) {
-    if (!sim || !Array.isArray(values)) return false;
-    for (let i = 0; i < sim.charges.length; i += 1) {
-      sim.charges[i] = values[i] ? 1 : 0;
+  function debugSetSkillStacks(values) {
+    if (!sim || !values) return false;
+    if (Number.isInteger(values.widePaddle)) {
+      sim.skillStacks.widePaddle = clamp(values.widePaddle, 0, SKILL.wideMaxStacks);
     }
-    return sim.charges.slice();
+    if (Number.isInteger(values.slow)) {
+      sim.skillStacks.slow = clamp(values.slow, 0, SKILL.slowMaxStacks);
+    }
+    syncPaddleWidth(sim);
+    return Object.assign({}, sim.skillStacks);
   }
 
   return {
@@ -971,7 +881,8 @@ export function createPlayScene(deps) {
     debugForceClear,
     debugForceFail,
     debugUseSkill,
+    debugCastSkill,
     debugTriggerDebuff,
-    debugSetCharges,
+    debugSetSkillStacks,
   };
 }

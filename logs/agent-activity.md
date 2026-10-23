@@ -172,3 +172,16 @@
 - 验证：`corepack pnpm test` 57/57；`levels:validate` 30 关通过；三端构建 0.43MB 各端；`verify:dist` OK。内置浏览器不可见，改用 Chrome headless + CDP 强制刷新核验：第 20 关 200 砖/4 减益，截图确认底部小间隙与减益图标；停球分裂被拒绝且充能保留；发球后分裂 1→2 同色球；触发三种减益后 `effects≈7.875/7.875/5.875`、`paddleW=97.5`，截图确认三枚状态丸与挡板着色。
 - 剩余风险：分裂密度、减益强度与 8 球阻塞提示需真机试玩；关卡美术逐关辨识度未人工走查；红/绿球产出入口仍待确认。
 - 下一步：用户按 `device-checklist.md` 2.11 / 2.21–2.25 / 7.9 真机复核；确认红/绿球来源；配置真实广告位。
+
+## 2026-10-23 · REQ-001 技能即时施放 + 技能格广告入口 + 减益掉落
+
+- 触发：用户确认「技能不要有时长限制、技能直接施放；下方技能格只用来通过广告获得并立即施放；奖励砖接到就施放；减益砖也要接到掉落物才生效；去掉清除率」。
+- 关键决定：技能取消充能、库存、点击释放与时长概念，`castSkill` 成为唯一施放入口；底部四格只承担广告入口与本关状态展示，点击直接拉激励视频、无确认层，广告期间整局暂停，看完立即施放；奖励砖掉落只在当前仍能生效的技能中随机，挡板接到立即施放，四个都不可用时不掉落并提示，生成后到接到前满级则本次作废；减益砖击碎必掉固定类型暗红菱形，只有挡板接到才生效，漏接不生效，砖块仍计入剩余数；减益本关永久，缩短 0.65×/层、加速 1.3×/层可叠加，反转为二元状态；加宽 +0.4/层封顶 2×（3 层），减速 ×0.85/层封底 0.5×（5 层）；清除率整体删除，HUD 只显示「剩余 / 总数 可破坏」；预开局只留「开始」，广告点位收缩为 `revive` / `skill`。
+- 改动：
+  - shared：`constants.js` 新增 `SKILL.wideStep/wideCap/wideMaxStacks/slowScale/slowFloor/slowMaxStacks`、`DEBUFF.shrinkScale/speedScale`，删除时长与充能常量；`physics.js` 用 `skillStacks/debuffs` 替换 `charges/effects`，新增 `skillCanCast/skillMultiplier/castSkill/syncPaddleWidth`，奖励/减益砖统一走 `spawnRewardDrop/spawnDebuffDrop`，拾取改用 `castSkill`/`triggerDebuff`，删除 `clearPercent` 与 `stats.destroyed`；`index.js` 导出同步。
+  - game：`play.js` 删除 `slotPress/TAP_SLOP/pendingSkill/extraBallBought` 与充能弹层，技能格按下即 `watchSkill`（广告完成走 `castSkill`），预开局只留「开始」，HUD/失败/结算改为剩余数，快照与调试 API 换成 `skillStacks/skillMultipliers/skillCanCast/debuffs/drops`、`setSkillStacks/castSkill/useSkill`；`skillBar.js` 改为看广告/已满/无目标 + 倍率徽标；`hud.js` 去掉 CLEARED/百分比；`debuffBar.js` 改为图标 + 累计层数；`theme.js` 技能提示与减益元数据同步；`config/ads.js` 删除 `extraBall`。
+  - 测试：`physics.test.mjs` 重写为 28 个用例，覆盖即时施放、加宽/减速叠层封顶、分裂语义与阻塞、减益掉落接到/漏接、奖励掉落即时施放/满级作废/全满不掉、剩余数过关，并断言旧 API 不再导出；`render.test.mjs` 用新 sim 结构断言 HUD、三态技能格、倍率、减益层数与弹层。
+- 验证：`corepack pnpm test` 67/67 通过；`corepack pnpm build` 三端 0.43MB；`corepack pnpm verify:dist` OK，三端 bundle 无 `extraBall`/`skillCharge` 命中。Chrome headless + CDP（390×844@2x，`?adMs=700`）22 项断言全过：预开局只有「开始」；分裂停球不可用且不拉广告；加宽 1 层 `paddleW=210`、减速 2 层倍率 0.7225、缩板 2 层 + 加速 1 层后 `paddleW=88.725`；点击多球格直接 `modal=ad/paused=true`，广告期间 `sim.time` 冻结，结束后球 1→3；满级格不拉广告；失败弹层仅复活/重来，复活广告后 `reviveUsed=true`，二次失败按钮置灰。截图确认 HUD 无 CLEARED/百分比、四格三态与倍率、减益丸「缩板 ×2」「加速 ×1」无倒计时、广告弹层展示「多球 立即施放」。
+- 踩坑：改完 shared API 后两个测试文件仍用旧字段，单测直接模块加载失败/读空属性；假 sim 必须补齐 `balls/skillStacks/debuffs`，不能只改渲染函数签名。
+- 剩余风险：掉落必须挡板接到，漏接成本与 230px/s 下落速度需真机试玩；减益永久叠加最坏 0.42× 挡板 / 1.69× 球速需确认难度；加宽 3 层、减速 5 层的随机分布可能让单局憋屈；红/绿球产出入口仍待确认；真机、真实广告位、分享与低端机性能待用户走查。
+- 下一步：用户按 `device-checklist.md` 2.8–2.13、2.20–2.27、3.8–3.10、4.1–4.3 真机复核；配置 `revive` / `skill` 真实广告位；确认红/绿球来源；推进软著材料。

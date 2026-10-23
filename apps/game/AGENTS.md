@@ -52,7 +52,7 @@
 - 本地存档损坏 → 统一封装存档模块：读写收口单点、损坏降级重置、异常恢复。
 - 大量零散单图推高包体与开销 → 图集合并压缩，大图延迟按需加载。
 - `pnpm install` 提示 `Ignored build scripts: esbuild` → pnpm 10 默认拦截依赖构建脚本；esbuild 0.28.2 的平台二进制由 optionalDependencies 提供，构建不受影响。换平台或版本后若报找不到二进制，再执行 `pnpm approve-builds` 允许 esbuild 的构建脚本。
-- 局内画面能渲染但 sim 永远停在 `ready` / 浏览器自动化点击后无进展 → 场景绘制与推进脱节。**根因**：`draw()` 只渲染，没有调用 `tick(now)`，而 rAF 只挂在外层 `frame` 上。**方案**：固定由 `play.draw()` 驱动 `tick`，调试快照只读不渲染。**验证**：点击发球后 `getSnapshot().time` 增长、`percent` 变化。
+- 局内画面能渲染但 sim 永远停在 `ready` / 浏览器自动化点击后无进展 → 场景绘制与推进脱节。**根因**：`draw()` 只渲染，没有调用 `tick(now)`，而 rAF 只挂在外层 `frame` 上。**方案**：固定由 `play.draw()` 驱动 `tick`，调试快照只读不渲染。**验证**：点击发球后 `getSnapshot().time` 增长、`left` 随击碎下降。
 - 每次击砖都新建离屏 canvas / 真机首屏偶发被覆盖 → 微信 `createCanvas` 前几次可能返回主画布，且逐次创建成本高。**方案**：bitmap-cache 只创建一张离屏 surface 反复复用；adapter 的 `createCanvas` 连续取到非主画布为止。**验证**：连续击砖 `cacheBuilds` 增长但离屏对象不增长；真机画面不再被缓存层覆盖。
 - 浏览器自动化点错按钮 / 命中坐标与截图不符 → 截图是物理像素，不是 750 设计坐标。**方案**：用 `getRect` 系列（`hitModal` / `getRects`）拿设计坐标后再点中心，不靠截图目测。**验证**：点击后 `getSnapshot().modal` / `levelId` 与预期一致。
 - 广告三通道在真机一直走模拟广告 → entries 没有把广告位 ID 传给 adapter。**方案**：在 `src/config/ads.js` 填 `AD_UNIT_ID` / `AD_UNIT_IDS`，由 entries 注入；留空即模拟广告。**验证**：`platform.adMode()` 返回 `sdk`，真机拉起平台广告。
@@ -64,8 +64,8 @@
 - 用户仍觉得局内游戏区没铺到屏幕底 → 判定区（通宽面板）早已到底，但视觉主体是棋盘卡片，卡片底边成了眼睛看到的「游戏区」边界，低 alpha 底衬补不回来。**方案**：视觉改成与棋盘同宽的一张卡铺到屏幕物理底，卡内分隔线标出失败线；操作区保持独立通宽。**验证**：`render.test.mjs` 断言卡片同宽触底、分隔线等于技能栏上沿；fit 与 fallback 两视口截图确认卡片下沿贴屏。
 - 视口变高后球在棋盘下沿就被判失败 → `sim.failY` 是纯数据，不会自己跟着布局走。**方案**：`play.draw()` 每帧由 `computePlayLayout` 重算 `layout.failY` 并写回 `sim.failY`，失败线永远等于技能栏上沿；`createState` 的默认值只服务测试。**验证**：浏览器改视口后读 `getSnapshot().failY` 与 `rects.dividerY` 差值等于棋盘 `y`；shared 测试覆盖自定义 `failY`。
 - toast 遮住整排技能格 → toast 默认画在屏幕底边，技能栏改为常驻贴底后必然重叠。**方案**：局内 toast 基线取 `min(屏底 − 12, 技能栏上沿 − 16)`。**验证**：375×812 截图确认提示条完整位于技能栏上方。
-- 删除金币/扩容后界面或调试按钮仍引用旧字段 → 仅改 shared 会让页面在 `store.get().coins` 处静默 NaN，调试 API 直接抛错。**方案**：共享 API 与存档字段同步删除，旧存档迁移时丢弃未知字段；全仓 grep `coins` / `slotCapacity` 只剩迁移测试。**验证**：`corepack pnpm test` 48 项通过、`verify:dist` 通过。
-- 奖励砖击碎后「没掉东西」 → 掉落原为 50% 概率，且四格技能全满时静默返回，玩家无法区分未触发与已满。**方案**：`RULES.skillDropChance = 1`，四格全满时发 `skillFull`（`skill: null`），页面 toast「四个技能都已就绪」；掉落仍需挡板接住。**验证**：`physics.test.mjs` 用固定种子断言必掉与满格零掉落；浏览器击碎奖励砖可观察到菱形掉落。
+- 删除金币/扩容后界面或调试按钮仍引用旧字段 → 仅改 shared 会让页面在 `store.get().coins` 处静默 NaN，调试 API 直接抛错。**方案**：共享 API 与存档字段同步删除，旧存档迁移时丢弃未知字段；全仓 grep `coins` / `slotCapacity` 只剩迁移测试。**验证**：`corepack pnpm test` 67 项通过、`verify:dist` 通过。
+- 奖励砖击碎后「没掉东西」 → 掉落只在能生效的技能中随机，四个技能都到顶时静默返回会与「未触发」混淆。**方案**：击破必掉；四个技能都无法生效时发 `skillFull`，页面 toast「四个技能都已满级」。**验证**：`physics.test.mjs` 断言可用技能必掉与四技能封顶零掉落；浏览器击碎奖励砖可观察到金色菱形掉落。
 - 奖励砖位置聚在一起、玩家感知「奖励太少」 → 初版每关 3 块且坐标手写在图案局部，容易落在同一区域。**方案**：每关固定 6 块，生成器 `chooseRewards()` 在非障碍砖格上做最远点采样（首块离质心最远，其后最大化到已选格的最近距离，`hash2` 决胜）；30 关源图、sidecar 与 `levels.json` 全量重生成。**验证**：每关奖励砖均为 6，最近两块相距 5.8–10.8 格；`levels:validate` 与关卡测试通过。
-- 拾取技能充能后「技能自己放了」/ 手指经过技能栏就误触发 → 技能格在 `pointerdown` 立即调用 `useSkill()`，按下与拖动经过都会释放；数据层拾取本身只写充能。**方案**：改为 `slotPress` + 抬手确认——按下只记录格号、坐标与按下时充能状态，抬手仍在同格且位移 ≤ 18 设计 px 才释放；拖出、超限、按下时未充能均取消，弹窗/广告/切后台清空按压状态。**验证**：`physics.test.mjs`「奖励砖拾取只充能，点击释放才生效」；浏览器真实 PointerEvent 拖出格后充能不变，原地点击才生效。
+- 技能格误触 / 玩家以为拾取后还要再点一次 → 旧模型拾取只写充能、点击技能格才释放，既多一步操作又容易在拖动经过时误触。**方案**：掉落被挡板接到即 `castSkill`，技能格改为纯广告入口：`pointerdown` 直接判定，`skillCanCast` 不通过只 toast、不拉广告；广告期间整局暂停，完成后走同一 `castSkill` 路径。**验证**：`physics.test.mjs` 覆盖接到立即施放、满级作废、漏接不施放；浏览器快照确认点击技能格 → `modal=ad/paused=true`、`sim.time` 冻结、广告结束球数或倍率立即变化，满级格点击不出现 `ad`。
 - 移除首页后仍有入口返回空场景 → 只删 `home.js` 不够，`play` 的 `onExit`、四类弹层的 `home` 按钮与 `handleAction('home')` 会留下死路径。**方案**：`createGameApp` 直接启动最高关，删除 home import/场景分支/`backHome`/`onExit` 与全部 home 按钮。**验证**：全仓 grep `scene/home|createHomeScene|onExit|backHome` 零命中；浏览器四类弹层按钮清单无 home。

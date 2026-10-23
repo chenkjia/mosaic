@@ -27,13 +27,13 @@ export function drawHud(ctx, layout, data) {
   ctx.textAlign = 'center';
   ctx.fillStyle = C.muted;
   ctx.font = FONT.tinyBold;
-  ctx.fillText('CLEARED', centerX, 36);
+  ctx.fillText('剩余 / 总数', centerX, 36);
 
   ctx.fillStyle = C.primary;
   ctx.font = FONT.number;
-  ctx.fillText(data.percent + '%', centerX, 82);
+  ctx.fillText(data.left + ' / ' + data.total, centerX, 82);
 
   ctx.fillStyle = C.soft;
   ctx.font = FONT.tiny;
-  ctx.fillText(data.left + ' / ' + data.total + ' 可破坏', centerX, 116);
+  ctx.fillText('可破坏', centerX, 116);
 }

@@ -1,5 +1,5 @@
 import {
-  BALL, BOARD, DEBUFF, DEBUFF_IDS, PADDLE, RULES, SKILL, SKILL_IDS, SKILL_SLOTS,
+  BALL, BOARD, DEBUFF, DEBUFF_IDS, PADDLE, RULES, SKILL, SKILL_IDS,
 } from './constants.js';
 import { chance, createRng, nextFloat, nextInt, nextRange } from './rng.js';
 import { countDestructible, parseLevel } from './level.js';
@@ -43,18 +43,12 @@ export function createState(levelInput, seed, options) {
       baseW: PADDLE.w,
     },
     drops: [],
-    charges: new Array(SKILL_SLOTS).fill(0),
-    effects: {
-      wideUntil: 0,
-      slowUntil: 0,
-      shrinkUntil: 0,
-      speedUntil: 0,
-      reverseUntil: 0,
-    },
+    skillStacks: { widePaddle: 0, slow: 0 },
+    debuffs: { shrink: 0, speed: 0, reverse: 0 },
     reviveUsed: false,
     rng: createRng(rngSeed),
     nextId: 1,
-    stats: { total: 0, left: 0, destroyed: 0 },
+    stats: { total: 0, left: 0 },
   };
 
   const rowOffset = level.anchor === 'bottom'
@@ -131,40 +125,52 @@ export function revive(state) {
   return true;
 }
 
-export function addSkillCharge(state, skill) {
-  const index = SKILL_IDS.indexOf(skill);
-  if (index < 0) return { ok: false, full: false, index: -1 };
-  if (state.charges[index] > 0) return { ok: false, full: true, index };
-  state.charges[index] = 1;
-  return { ok: true, full: false, index };
+export function skillMultiplier(state, skill) {
+  if (skill === 'widePaddle') {
+    return Math.min(SKILL.wideCap, 1 + SKILL.wideStep * state.skillStacks.widePaddle);
+  }
+  if (skill === 'slow') {
+    return Math.max(SKILL.slowFloor, Math.pow(SKILL.slowScale, state.skillStacks.slow));
+  }
+  return 1;
 }
 
-export function activateSkill(state, index) {
-  if (!Number.isInteger(index) || index < 0 || index >= SKILL_SLOTS) {
-    return { ok: false, skill: null, events: [] };
+export function skillCanCast(state, skill) {
+  if (skill === 'multiBall') return state.balls.length < BALL.cap;
+  if (skill === 'split') {
+    return state.balls.length < BALL.cap && state.balls.some((ball) => !ball.docked);
   }
-  const skill = SKILL_IDS[index];
-  if (state.charges[index] <= 0) return { ok: false, skill, events: [] };
+  if (skill === 'widePaddle') return state.skillStacks.widePaddle < SKILL.wideMaxStacks;
+  if (skill === 'slow') return state.skillStacks.slow < SKILL.slowMaxStacks;
+  return false;
+}
 
-  if (skill === 'split' && !state.balls.some((ball) => !ball.docked)) {
-    return { ok: false, skill, events: [], reason: 'noMovingBall' };
+export function castSkill(state, skill) {
+  if (!SKILL_IDS.includes(skill)) {
+    return { ok: false, skill: null, reason: 'unknown', events: [] };
+  }
+  if (!skillCanCast(state, skill)) {
+    const reason = skill === 'split' && state.balls.length < BALL.cap ? 'noMovingBall' : 'capped';
+    return { ok: false, skill, reason, events: [] };
   }
 
-  state.charges[index] = 0;
-  const events = [{ type: 'skillUsed', skill, slot: index }];
-
+  const events = [{ type: 'skillUsed', skill }];
   if (skill === 'multiBall') {
     for (let i = 0; i < 2; i += 1) {
       const ball = addBall(state, 'blue', state.phase !== 'playing');
       if (ball) events.push({ type: 'ballSpawned', ballId: ball.id, kind: ball.kind, source: 'skill' });
     }
   } else if (skill === 'widePaddle') {
-    state.effects.wideUntil = state.time + SKILL.wideDuration;
+    state.skillStacks.widePaddle += 1;
     updatePaddleWidth(state);
   } else if (skill === 'split') {
     splitAllBalls(state, events);
   } else if (skill === 'slow') {
-    state.effects.slowUntil = state.time + SKILL.slowDuration;
+    state.skillStacks.slow += 1;
+  }
+  if (skill === 'widePaddle' || skill === 'slow') {
+    events[0].stacks = state.skillStacks[skill];
+    events[0].multiplier = skillMultiplier(state, skill);
   }
   return { ok: true, skill, events };
 }
@@ -204,13 +210,15 @@ function splitAllBalls(state, events) {
 }
 
 function updatePaddleWidth(state) {
-  const wide = state.time < state.effects.wideUntil;
-  const shrink = state.time < state.effects.shrinkUntil;
-  state.paddle.w = state.paddle.baseW
-    * (wide ? PADDLE.wideScale : 1)
-    * (shrink ? DEBUFF.shrinkScale : 1);
+  const wide = skillMultiplier(state, 'widePaddle');
+  const shrink = Math.pow(DEBUFF.shrinkScale, state.debuffs.shrink);
+  state.paddle.w = state.paddle.baseW * wide * shrink;
   const half = state.paddle.w / 2;
   state.paddle.x = clamp(state.paddle.x, half, BOARD.w - half);
+}
+
+export function syncPaddleWidth(state) {
+  updatePaddleWidth(state);
 }
 
 function launchDocked(state, events) {
@@ -346,7 +354,6 @@ function damageBrick(state, brick, amount, events) {
 
   brick.alive = false;
   state.stats.left -= 1;
-  state.stats.destroyed += 1;
   events.push({
     type: 'brickBreak',
     brickId: brick.id,
@@ -357,14 +364,7 @@ function damageBrick(state, brick, amount, events) {
     y: center.y,
   });
   if (brick.type === 'reward') spawnRewardDrop(state, center, events);
-  if (brick.type === 'debuff') {
-    const event = triggerDebuff(state, brick.debuff);
-    if (event) {
-      event.x = center.x;
-      event.y = center.y;
-      events.push(event);
-    }
-  }
+  if (brick.type === 'debuff') spawnDebuffDrop(state, brick.debuff, center, events);
   if (state.stats.left <= 0) {
     state.phase = 'cleared';
     events.push({ type: 'levelClear' });
@@ -373,37 +373,26 @@ function damageBrick(state, brick, amount, events) {
 
 export function triggerDebuff(state, kind) {
   if (!DEBUFF_IDS.includes(kind)) return null;
-  let duration = 0;
-  if (kind === 'shrink') {
-    duration = DEBUFF.shrinkDuration;
-    state.effects.shrinkUntil = state.time + duration;
-    updatePaddleWidth(state);
-  } else if (kind === 'speed') {
-    duration = DEBUFF.speedDuration;
-    state.effects.speedUntil = state.time + duration;
-  } else if (kind === 'reverse') {
-    duration = DEBUFF.reverseDuration;
-    state.effects.reverseUntil = state.time + duration;
+  if (kind === 'reverse') {
+    state.debuffs.reverse = 1;
+  } else {
+    state.debuffs[kind] += 1;
   }
+  if (kind === 'shrink') updatePaddleWidth(state);
   return {
     type: 'debuffTriggered',
     debuff: kind,
-    duration,
-    until: state.time + duration,
+    stacks: state.debuffs[kind],
   };
 }
 
 function spawnRewardDrop(state, center, events) {
-  if (!chance(state.rng, RULES.skillDropChance)) return;
-  const available = [];
-  for (let i = 0; i < SKILL_SLOTS; i += 1) {
-    if (state.charges[i] <= 0) available.push(i);
-  }
+  const available = SKILL_IDS.filter((skill) => skillCanCast(state, skill));
   if (available.length === 0) {
     events.push({ type: 'skillFull', skill: null });
     return;
   }
-  const skill = SKILL_IDS[available[nextInt(state.rng, 0, available.length - 1)]];
+  const skill = available[nextInt(state.rng, 0, available.length - 1)];
   const drop = {
     id: state.nextId,
     x: center.x,
@@ -411,12 +400,27 @@ function spawnRewardDrop(state, center, events) {
     vy: RULES.dropSpeed,
     r: RULES.dropRadius,
     kind: 'skill',
-    amount: 0,
     skill,
   };
   state.nextId += 1;
   state.drops.push(drop);
-  events.push({ type: 'dropSpawn', dropId: drop.id, kind: drop.kind, skill: drop.skill, amount: 0 });
+  events.push({ type: 'dropSpawn', dropId: drop.id, kind: drop.kind, skill: drop.skill });
+}
+
+function spawnDebuffDrop(state, debuff, center, events) {
+  if (!DEBUFF_IDS.includes(debuff)) return;
+  const drop = {
+    id: state.nextId,
+    x: center.x,
+    y: center.y,
+    vy: RULES.dropSpeed,
+    r: RULES.dropRadius,
+    kind: 'debuff',
+    debuff,
+  };
+  state.nextId += 1;
+  state.drops.push(drop);
+  events.push({ type: 'dropSpawn', dropId: drop.id, kind: drop.kind, debuff: drop.debuff });
 }
 
 function splitGreenBall(state, ball, events) {
@@ -488,11 +492,22 @@ function collectDrops(state, events, delta) {
     if (drop.y + drop.r >= line && drop.y - drop.r <= paddle.y + paddle.h / 2
       && Math.abs(drop.x - paddle.x) <= half + drop.r) {
       state.drops.splice(i, 1);
-      const added = addSkillCharge(state, drop.skill);
-      if (added.ok) {
-        events.push({ type: 'skillPickup', skill: drop.skill, slot: added.index });
+      if (drop.kind === 'debuff') {
+        const event = triggerDebuff(state, drop.debuff);
+        if (event) {
+          event.x = drop.x;
+          event.y = drop.y;
+          events.push(event);
+        }
+        events.push({ type: 'debuffPickup', debuff: drop.debuff, stacks: state.debuffs[drop.debuff] });
       } else {
-        events.push({ type: 'skillFull', skill: drop.skill });
+        const result = castSkill(state, drop.skill);
+        if (result.ok) {
+          events.push({ type: 'skillPickup', skill: drop.skill });
+          for (let e = 0; e < result.events.length; e += 1) events.push(result.events[e]);
+        } else {
+          events.push({ type: 'skillWasted', skill: drop.skill, reason: result.reason });
+        }
       }
     } else if (drop.y + drop.r > state.failY) {
       state.drops.splice(i, 1);
@@ -509,7 +524,7 @@ export function step(state, input, dt) {
 
   if (input && Number.isFinite(input.paddleX)) {
     const half = state.paddle.w / 2;
-    const reverse = state.time < state.effects.reverseUntil;
+    const reverse = state.debuffs.reverse > 0;
     const target = reverse ? BOARD.w - input.paddleX : input.paddleX;
     state.paddle.x = clamp(target, half, BOARD.w - half);
   }
@@ -517,8 +532,8 @@ export function step(state, input, dt) {
 
   updateEffects(state);
 
-  const slow = state.time < state.effects.slowUntil ? SKILL.slowScale : 1;
-  const speed = state.time < state.effects.speedUntil ? DEBUFF.speedScale : 1;
+  const slow = skillMultiplier(state, 'slow');
+  const speed = Math.pow(DEBUFF.speedScale, state.debuffs.speed);
   const move = delta * slow * speed;
 
   for (let i = 0; i < state.balls.length; i += 1) {
@@ -587,12 +602,6 @@ export function step(state, input, dt) {
     ball.vy = finite(ball.vy, 0);
   }
   return { state, events };
-}
-
-export function clearPercent(state) {
-  if (!state.stats || state.stats.total <= 0) return 100;
-  if (state.stats.left <= 0) return 100;
-  return Math.min(99, Math.floor((state.stats.destroyed / state.stats.total) * 100));
 }
 
 export function hashState(state) {

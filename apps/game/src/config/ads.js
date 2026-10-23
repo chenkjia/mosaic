@@ -4,6 +4,5 @@ export const AD_UNIT_ID = '';
 // 可选：按点位分别配置；为空时回退 AD_UNIT_ID。
 export const AD_UNIT_IDS = {
   revive: '',
-  extraBall: '',
-  skillCharge: '',
+  skill: '',
 };
