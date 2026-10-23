@@ -14,7 +14,7 @@ import { activeDebuffs, drawDebuffBar, drawDebuffIcon } from '../../ui/debuffBar
 import { drawHud } from '../../ui/hud.js';
 import { drawModal, hitModal, modalLayout } from '../../ui/modal.js';
 import { drawSkillBar, drawSkillIcon, formatMultiplier, hitSkill } from '../../ui/skillBar.js';
-import { C, EFFECT_META, SKILL_META, THEME_LABEL } from '../../ui/theme.js';
+import { C, EFFECT_META, SKILL_META } from '../../ui/theme.js';
 import { createToast } from '../../ui/toast.js';
 
 const BALL_COLORS = {
@@ -80,7 +80,7 @@ export function createPlayScene(deps) {
     info = levelInfo(level);
     sim = createState(level, undefined, { failY: layout ? layout.failY : undefined });
     modal = null;
-    paused = true;
+    paused = false;
     adBusy = false;
     lastNow = 0;
     acc = 0;
@@ -95,23 +95,7 @@ export function createPlayScene(deps) {
     particles.reset();
     toast.clear();
     cache.clear();
-    modal = preRoundModal();
-  }
-
-  function preRoundModal() {
-    const step = level.ball.speed;
-    return {
-      kind: 'preRound',
-      title: '第 ' + levelId + ' 关',
-      subtitle: (THEME_LABEL[level.theme] || level.theme) + ' · ' + level.ball.count + ' 颗球 · 球速 ' + step,
-      lines: [
-        { text: '硬砖 ' + info.hard + ' · 奖励砖 ' + info.reward + ' · 减益砖 ' + info.debuff },
-        { text: '可破坏 ' + info.total + ' · 挡板跟手，点击棋盘发球', color: C.muted },
-      ],
-      buttons: [
-        { id: 'start', label: '开始', kind: 'primary' },
-      ],
-    };
+    toast.show('点击棋盘发球');
   }
 
   function skillLine() {
@@ -145,7 +129,7 @@ export function createPlayScene(deps) {
     return {
       kind: 'result',
       title: allDone ? '全部关卡完成' : '过关！',
-      subtitle: '第 ' + levelId + ' 关 · 可破坏砖已清空',
+      subtitle: '第 ' + levelId + ' 关 · 本关砖块已清空',
       lines: [
         {
           text: allDone ? '30 关全部通关' : '下一关 · 第 ' + (levelId + 1) + ' 关',
@@ -167,7 +151,7 @@ export function createPlayScene(deps) {
       title: '挑战失败',
       subtitle: '球全部越过了失败线',
       lines: [
-        { text: '剩余 ' + sim.stats.left + ' / ' + sim.stats.total + ' 可破坏', color: C.muted },
+        { text: '剩余 ' + sim.stats.left + ' / ' + sim.stats.total, color: C.muted },
         { text: '复活每关仅一次', color: C.soft },
       ],
       buttons: [
@@ -197,14 +181,6 @@ export function createPlayScene(deps) {
       buttons: [],
       note: platform.adMode() === 'sdk' ? '广告由平台提供' : '模拟广告 · 观看完成自动返回',
     };
-  }
-
-  function beginRound() {
-    modal = null;
-    paused = false;
-    acc = 0;
-    lastNow = 0;
-    toast.show('点击棋盘发球');
   }
 
   function resume() {
@@ -306,9 +282,7 @@ export function createPlayScene(deps) {
   }
 
   function handleAction(id) {
-    if (id === 'start') {
-      beginRound();
-    } else if (id === 'resume') {
+    if (id === 'resume') {
       resume();
     } else if (id === 'restart') {
       start(levelId);
@@ -784,10 +758,6 @@ export function createPlayScene(deps) {
 
   function debugDismissModal() {
     if (!modal) return false;
-    if (modal.kind === 'preRound') {
-      beginRound();
-      return true;
-    }
     if (modal.kind === 'result') {
       nextLevel();
       return true;

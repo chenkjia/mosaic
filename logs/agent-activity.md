@@ -185,3 +185,16 @@
 - 踩坑：改完 shared API 后两个测试文件仍用旧字段，单测直接模块加载失败/读空属性；假 sim 必须补齐 `balls/skillStacks/debuffs`，不能只改渲染函数签名。
 - 剩余风险：掉落必须挡板接到，漏接成本与 230px/s 下落速度需真机试玩；减益永久叠加最坏 0.42× 挡板 / 1.69× 球速需确认难度；加宽 3 层、减速 5 层的随机分布可能让单局憋屈；红/绿球产出入口仍待确认；真机、真实广告位、分享与低端机性能待用户走查。
 - 下一步：用户按 `device-checklist.md` 2.8–2.13、2.20–2.27、3.8–3.10、4.1–4.3 真机复核；配置 `revive` / `skill` 真实广告位；确认红/绿球来源；推进软著材料。
+
+## 2026-10-23 · REQ-001 移除开局弹窗 + HUD 递增计数 + UI 去「可破坏」
+
+- 触发：用户先提「游戏开始时还需要有开始那个弹窗，顶部数量从小到大，不要可破坏那三个字」，随后澄清「我说错了，我想说的是每一关游戏开始时不需要有开始那个弹窗」「改成递增，不要字」「全部 UI 清掉」。即删除 preRound 弹层，HUD 改为递增的已清除 / 总数且不带任何说明文字。
+- 关键决定：开局弹层整体删除，启动 / 重开 / 下一关 / 复活后都直接进入准备态并 toast「点击棋盘发球」；HUD 中央只画大号 `已清除 / 总数` 数字（0 / 72 → 72 / 72），保留左上暂停与关卡号、右上留空；预开局、失败面板、结算与暂停中的「可破坏」字样全部清除，领域术语只保留在文档与代码里。
+- 改动：
+  - `apps/game/src/game/scene/play.js`：`start()` 直接 `modal=null / paused=false` 并提示发球，删除 `preRoundModal()` 与 `beginRound()`，`handleAction` 去掉 `start` 分支，`debugDismissModal` 去掉 preRound 分支，删除 `THEME_LABEL` 导入；失败面板与结算副标题去掉「可破坏」。
+  - `apps/game/src/ui/hud.js`：中央只画 `total - left` 与 `total`，删除「剩余 / 总数」「可破坏」与百分比。
+  - `apps/game/test/render.test.mjs`：用例改名并断言 `60 / 140` 存在、「剩余 / 总数」「可破坏」不存在。
+  - 文档：根 `AGENTS.md`、`apps/game/AGENTS.md`、`CONTEXT.md`、REQ-001、spec、tickets 06/07、验证报告、真机清单、README 同步直接开局、递增计数与文案清理口径。
+- 验证：`corepack pnpm test` 67/67 通过；`corepack pnpm build` web 0.42MB、微信/抖音 0.43MB；`corepack pnpm verify:dist` OK。Chrome headless + CDP（390×844@2x，`?adMs=700`）22 项断言全过：启动 `modal=null / phase=ready / paused=false`、`rects.modal=null`、HUD `0 / 72`；点击后递增 `1 / 72`；分裂停球不拉广告；加宽/减速/减益数值与广告冻结时间、失败复活链路保持不变。截图确认无开局弹窗、HUD 无文字标签，toast 为「点击棋盘发球」。
+- 剩余风险：无开局弹层后玩家第一次进入缺少玩法说明，目前仅靠 toast，真机观察是否有理解成本；技能广告在准备态可点但球停泊时分裂格为「无目标」；真机与真实广告位仍待用户走查。
+- 下一步：用户按 `device-checklist.md` 1.1–1.6、2.1–2.5 真机复核直接开局与递增计数；评估是否需要在首关加一次性轻量引导。

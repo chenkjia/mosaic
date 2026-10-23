@@ -154,7 +154,7 @@ test('宝石砖各状态绘制坐标均为有限值', () => {
   }
 });
 
-test('HUD 只显示剩余 / 总数，四格技能格是可点的广告入口', () => {
+test('HUD 只显示递增的已清除 / 总数，四格技能格是可点的广告入口', () => {
   const view = { w: 750, h: 1334, bleed: { x: 0, y: 0, w: 750, h: 1334 } };
   const layout = computePlayLayout(view);
   const ctx = makeCtx();
@@ -171,9 +171,9 @@ test('HUD 只显示剩余 / 总数，四格技能格是可点的广告入口', (
   drawSkillBar(ctx, layout, sim, 1000);
   assertFinite(ctx, 'hud+skill');
   assert.ok(ctx.texts.includes('第 7 关'));
-  assert.ok(ctx.texts.includes('剩余 / 总数'));
-  assert.ok(ctx.texts.includes('80 / 140'));
-  assert.ok(ctx.texts.includes('可破坏'));
+  assert.ok(ctx.texts.includes('60 / 140'));
+  assert.equal(ctx.texts.includes('剩余 / 总数'), false);
+  assert.equal(ctx.texts.includes('可破坏'), false);
   assert.equal(countText(ctx, '看广告'), 4);
   assert.ok(ctx.texts.includes('多球'));
   assert.ok(ctx.texts.includes('加宽'));

@@ -25,15 +25,7 @@ export function drawHud(ctx, layout, data) {
 
   const centerX = 375;
   ctx.textAlign = 'center';
-  ctx.fillStyle = C.muted;
-  ctx.font = FONT.tinyBold;
-  ctx.fillText('剩余 / 总数', centerX, 36);
-
   ctx.fillStyle = C.primary;
   ctx.font = FONT.number;
-  ctx.fillText(data.left + ' / ' + data.total, centerX, 82);
-
-  ctx.fillStyle = C.soft;
-  ctx.font = FONT.tiny;
-  ctx.fillText('可破坏', centerX, 116);
+  ctx.fillText((data.total - data.left) + ' / ' + data.total, centerX, pause.y + pause.h / 2 + 2);
 }
