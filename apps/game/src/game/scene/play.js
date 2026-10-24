@@ -23,6 +23,10 @@ const BALL_COLORS = {
   green: C.mintDeep,
 };
 const GEM_RADIUS = 7;
+const CONFETTI_COLORS = [C.pinkDeep, C.yellow, C.mint, C.blue, C.lavender, C.orange, C.gold];
+const CONFETTI_COLUMNS = 9;
+const CONFETTI_SECONDS = 1.4;
+const CONFETTI_WAVE_SECONDS = 0.09;
 const LEVEL_BY_ID = new Map();
 for (let i = 0; i < LEVELS.length; i += 1) LEVEL_BY_ID.set(LEVELS[i].id, LEVELS[i]);
 
@@ -67,6 +71,9 @@ export function createPlayScene(deps) {
   let failAt = 0;
   let failShown = false;
   let settled = false;
+  let celebrateLeft = 0;
+  let confettiIn = 0;
+  let confettiWave = 0;
   let bgKey = '';
   let background = null;
 
@@ -92,6 +99,9 @@ export function createPlayScene(deps) {
     failAt = 0;
     failShown = false;
     settled = false;
+    celebrateLeft = 0;
+    confettiIn = 0;
+    confettiWave = 0;
     particles.reset();
     toast.clear();
     cache.clear();
@@ -124,23 +134,15 @@ export function createPlayScene(deps) {
     };
   }
 
-  function resultModal() {
-    const allDone = levelId >= LEVEL_COUNT;
+  function completeModal() {
     return {
       kind: 'result',
-      title: allDone ? '全部关卡完成' : '过关！',
+      title: '全部关卡完成',
       subtitle: '第 ' + levelId + ' 关 · 本关砖块已清空',
-      lines: [
-        {
-          text: allDone ? '30 关全部通关' : '下一关 · 第 ' + (levelId + 1) + ' 关',
-          color: C.muted,
-        },
-      ],
-      buttons: [
-        { id: 'next', label: allDone ? '再玩一次' : '下一关', kind: 'primary' },
-      ],
+      lines: [{ text: LEVEL_COUNT + ' 关全部通关', color: C.muted }],
+      buttons: [{ id: 'next', label: '再玩一次', kind: 'primary' }],
       autoAt: lastNow > 0 ? lastNow + 6500 : 0,
-      autoLabel: allDone ? '自动再玩一次' : '自动进入下一关',
+      autoLabel: '自动再玩一次',
       note: '最高关已更新',
     };
   }
@@ -194,6 +196,19 @@ export function createPlayScene(deps) {
     start(levelId >= LEVEL_COUNT ? levelId : levelId + 1);
   }
 
+  function confettiBurst(waves) {
+    if (!layout) return;
+    const board = layout.board;
+    for (let n = 0; n < waves; n += 1) {
+      for (let i = 0; i < CONFETTI_COLUMNS; i += 1) {
+        const color = CONFETTI_COLORS[(confettiWave + i) % CONFETTI_COLORS.length];
+        const x = board.x + ((i + 0.5) / CONFETTI_COLUMNS) * board.w;
+        particles.rain(x, board.y - 10, color, 1);
+      }
+      confettiWave += 1;
+    }
+  }
+
   function settleClear() {
     if (settled) return;
     settled = true;
@@ -202,7 +217,11 @@ export function createPlayScene(deps) {
       if (next > save.highestLevel) save.highestLevel = next;
     });
     pauseForModal();
-    modal = resultModal();
+    toast.clear();
+    celebrateLeft = CONFETTI_SECONDS;
+    confettiIn = CONFETTI_WAVE_SECONDS;
+    confettiWave = 0;
+    confettiBurst(3);
   }
 
   function pauseForModal() {
@@ -400,6 +419,10 @@ export function createPlayScene(deps) {
   function onPointer(event) {
     if (!view || !sim || !layout) return;
     const id = pointerIdOf(event);
+    if (celebrateLeft > 0) {
+      dragId = null;
+      return;
+    }
     if (modal) {
       dragId = null;
       if (event.type !== 'start') return;
@@ -488,6 +511,19 @@ export function createPlayScene(deps) {
     }
     if (sim.phase === 'failed' && !failShown && !modal && failAt > 0 && now >= failAt) {
       openFail();
+    }
+    if (celebrateLeft > 0) {
+      celebrateLeft -= dt;
+      confettiIn -= dt;
+      if (celebrateLeft <= 0) {
+        celebrateLeft = 0;
+        confettiIn = 0;
+        if (levelId >= LEVEL_COUNT) modal = completeModal();
+        else nextLevel();
+      } else if (confettiIn <= 0) {
+        confettiBurst(1);
+        confettiIn += CONFETTI_WAVE_SECONDS;
+      }
     }
     if (modal && modal.kind === 'result' && !adBusy && modal.autoAt && now >= modal.autoAt) {
       nextLevel();
@@ -728,6 +764,7 @@ export function createPlayScene(deps) {
       modal: modal ? modal.kind : null,
       adBusy,
       settled,
+      celebrating: celebrateLeft > 0,
       highestLevel: store.get().highestLevel,
       failY: sim.failY,
       skillStacks: Object.assign({}, sim.skillStacks),

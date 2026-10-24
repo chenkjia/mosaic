@@ -37,6 +37,23 @@ export function createParticles() {
     }
   }
 
+  function rain(x, y, color, count) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const n = Math.min(count || 2, CAPACITY);
+    for (let i = 0; i < n; i += 1) {
+      const p = items[cursor];
+      cursor = (cursor + 1) % CAPACITY;
+      p.x = x + (next() - 0.5) * 36;
+      p.y = y + (next() - 0.5) * 10;
+      p.vx = (next() - 0.5) * 140;
+      p.vy = 200 + next() * 200;
+      p.size = 4 + next() * 4.5;
+      p.max = 1.1 + next() * 0.5;
+      p.life = p.max;
+      p.color = color || '#FFFFFF';
+    }
+  }
+
   function update(dt) {
     for (let i = 0; i < CAPACITY; i += 1) {
       const p = items[i];
@@ -65,5 +82,5 @@ export function createParticles() {
     for (let i = 0; i < CAPACITY; i += 1) items[i].life = 0;
   }
 
-  return { spawn, update, draw, reset };
+  return { spawn, rain, update, draw, reset };
 }

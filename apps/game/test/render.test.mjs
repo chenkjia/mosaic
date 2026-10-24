@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { PALETTE } from '@mosaic/shared';
 import { computePlayLayout } from '../src/game/layout.js';
 import { drawGemBrick } from '../src/gfx/drawGemBrick.js';
+import { createParticles } from '../src/gfx/particles.js';
 import { activeDebuffs, drawDebuffBar } from '../src/ui/debuffBar.js';
 import { drawHud } from '../src/ui/hud.js';
 import { drawSkillBar, formatMultiplier } from '../src/ui/skillBar.js';
@@ -269,4 +270,21 @@ test('弹层布局与绘制坐标均为有限值', () => {
   assertFinite(ctx, 'modal');
   assert.ok(ctx.texts.includes('广告播放中'));
   assert.ok(ctx.texts.includes('分裂 立即施放'));
+});
+
+test('撒花粒子忽略非法坐标并在下落绘制时保持有限值', () => {
+  const particles = createParticles();
+  particles.rain(Number.NaN, 10, '#FF9FC2', 1);
+  const empty = makeCtx();
+  particles.draw(empty);
+  assert.equal(empty.numbers.length, 0);
+
+  for (let i = 0; i < 12; i += 1) {
+    particles.rain(80 + i * 50, 40, '#FF9FC2', 2);
+  }
+  particles.update(0.2);
+  const ctx = makeCtx();
+  particles.draw(ctx);
+  assertFinite(ctx, 'confetti');
+  assert.ok(ctx.numbers.length >= 12 * 2 * 4);
 });

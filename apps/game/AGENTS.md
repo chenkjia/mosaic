@@ -23,7 +23,7 @@
 - 场景/业务层：组合层，只调用 ui/gfx，不直接写 ctx 样式细节。
 - 业务层永远在 750 设计坐标系绘制，platform 层 fit 缩放；触摸换算读画布实际尺寸。
 - 局内界面一张卡：游戏面板与棋盘同宽（714，左右各留 18），从 HUD 下沿铺到屏幕物理最底，底部圆角画在屏外；卡内分隔线在四格技能栏上沿，同时是模拟层失败线（`failY`）。棋盘底边到失败线之间是下落带，只保留左右边界。操作区是独立的通宽矩形（HUD 下沿到屏幕底、左右贴屏），判定禁止用卡片或棋盘矩形（会断手）。技能栏固定贴底，底边自「屏幕底 − `safeBottom`」向上留 24。
-- 无首页、无开局弹窗：`createGameApp` 只创建 `play` 场景，启动即 `play.start(store.get().highestLevel)`，直接进入准备态并提示「点击棋盘发球」；暂停保留继续/音效/音乐/分享/重开。不要恢复 `scene/home.js`、`onExit`、`preRound` 弹层或任何「返回主页」按钮。
+- 无首页、无开局弹窗、普通关无结算弹窗：`createGameApp` 只创建 `play` 场景，启动即 `play.start(store.get().highestLevel)`，直接进入准备态并提示「点击棋盘发球」；普通关过关撒花约 1.4s 后自动进入下一关，第 30 关撒花后显示通关弹层。暂停保留继续/音效/音乐/分享/重开。不要恢复 `scene/home.js`、`onExit`、`preRound` 弹层、普通关 result 弹层或任何「返回主页」按钮。
 
 ## 单包架构
 
@@ -70,3 +70,4 @@
 - 小网格关卡球板仍按 34px 格子画 → 第 1 关只有 3 行砖，砖块缩在顶部、球和挡板过小。**方案**：生成器为每关输出 `cell = cellForGrid(cols, rows)`（上限 2.2× 基础格），运行时砖块、挡板、球、掉落物统一按 `cell/34` 缩放；物理层读 `state.board.scale`，渲染层不再用全局常量。**验证**：浏览器快照断言 L1 `cell=74.8`、挡板宽 330、球半径 19.8，L30 `cell=34.9`；关卡测试覆盖间隙下限。
 - 技能格误触 / 玩家以为拾取后还要再点一次 → 旧模型拾取只写充能、点击技能格才释放，既多一步操作又容易在拖动经过时误触。**方案**：掉落被挡板接到即 `castSkill`，技能格改为纯广告入口：`pointerdown` 直接判定，`skillCanCast` 不通过只 toast、不拉广告；广告期间整局暂停，完成后走同一 `castSkill` 路径。**验证**：`physics.test.mjs` 覆盖接到立即施放、满级作废、漏接不施放；浏览器快照确认点击技能格 → `modal=ad/paused=true`、`sim.time` 冻结、广告结束球数或倍率立即变化，满级格点击不出现 `ad`。
 - 移除首页后仍有入口返回空场景 → 只删 `home.js` 不够，`play` 的 `onExit`、四类弹层的 `home` 按钮与 `handleAction('home')` 会留下死路径。**方案**：`createGameApp` 直接启动最高关，删除 home import/场景分支/`backHome`/`onExit` 与全部 home 按钮。**验证**：全仓 grep `scene/home|createHomeScene|onExit|backHome` 零命中；浏览器四类弹层按钮清单无 home。
+- 撒花期间点暂停或技能格仍会弹层 / 拉广告 → 撒花是独立状态而非 `modal`，`onPointer` 的 modal 分支拦不住底部交互。**方案**：`celebrateLeft > 0` 时 `onPointer` 直接返回并释放拖动；撒花结束由 `tick` 自动 `nextLevel()`，第 30 关才创建 `completeModal()`。**验证**：浏览器撒花中点击暂停坐标，快照保持 `modal=null / celebrating=true`；约 1.4s 后普通关 `levelId` +1。

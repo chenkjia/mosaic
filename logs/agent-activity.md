@@ -213,3 +213,16 @@
 - 验证：`corepack pnpm test` 71/71 通过；`corepack pnpm build` 三端成功（web 0.39MB、微信/抖音 0.40MB）；`corepack pnpm verify:dist` OK；`corepack pnpm levels:validate` 30 关通过。Chrome headless + CDP 实测：第 1 关 `total=10 / cell=74.8 / 网格 4×3 / paddleW=330 / 球半径 19.8`，施放大球后半径 31.68、`piercing=true`、技能格「已满」；第 7 关 76 块、第 10 关 120 块 / `cell=52.75`、第 30 关 264 块 / `cell=34.9`；`failY=1241` 与技能栏上沿一致。截图确认第 1 关猫图标大格、第 7/30 关精细像素画与缩放回落。
 - 剩余风险：第 1 关仅 3 行砖，顶部锚定 + 2.2× 上限导致砖板间留白约 673px，需真机确认手感；大球穿透的视觉反馈（穿透环、击碎节奏）与硬砖多次穿越的耐久表现需人工走查；早期大格图标辨识度、真机性能与真实广告位仍待用户执行。
 - 下一步：用户按 `device-checklist.md` 2.6–2.10、2.25、7.3–7.9 真机复核挡板位置、大球穿透与首关节奏；配置真实广告位；确认红/绿球来源与软著材料。
+
+## 2026-10-24 · REQ-001 过关撒花 + 自动进入下一关
+
+- 触发：用户要求「胜利的时候不需要那个弹窗，直接显示一个撒花，然后进入下一关就行」。
+- 关键决定：普通关可破坏砖清零后保留约 0.5s 清场缓冲，随后进入约 1.4s 撒花态；撒花期间暂停与技能输入全部屏蔽，结束后自动 `start(levelId + 1)`，不再创建过关结算弹层；最高关在撒花开始时 +1。第 30 关无下一关，撒花结束后仍显示原通关弹层（文案改为全部关卡完成 / 再玩一次），保留切后台取消自动再玩。彩纸从左到右 9 列自棋盘上沿连续落下，7 色取自现有马卡龙调色板。
+- 改动：
+  - `apps/game/src/gfx/particles.js`：新增 `rain()` 彩纸雨粒子（向下初速、寿命 1.1–1.6s、尺寸 4–8.5），与现有爆炸粒子共用 180 容量池；导出 `rain`。
+  - `apps/game/src/game/scene/play.js`：新增 `CONFETTI_*` 常量与 `celebrateLeft / confettiIn / confettiWave` 状态；`settleClear()` 改为启动撒花并清掉旧 toast，不再设置 `result` 弹层；`tick()` 按 dt 推进撒花、每 90ms 补一波彩纸，结束时普通关 `nextLevel()`、第 30 关 `completeModal()`；`onPointer()` 在撒花期间直接返回；`snapshot()` 新增 `celebrating`；`resultModal()` 收敛为只服务第 30 关的 `completeModal()`。
+  - `apps/game/test/render.test.mjs`：新增撒花粒子用例，断言非法坐标被忽略、下落绘制坐标有限；测试总数 71 → 72。
+  - 文档：REQ-001、CONTEXT、spec、README、真机清单 2.14/2.15/6.3 与本验证报告同步撒花口径。
+- 验证：`corepack pnpm test` 72/72 通过；`corepack pnpm build` 三端成功（web/微信/抖音均 0.40MB）；`corepack pnpm verify:dist` OK。Chrome headless + CDP 读快照：第 1 关 `forceClear()` 后 `settled=true / celebrating=true / modal=null`，点击暂停坐标不弹层；约 1.4s 后 `levelId=2 / phase=ready / 16 块 / modal=null`；第 30 关撒花后 `modal=result / levelId=30`，不越界。按项目规则未把动画过程截图作为验收证据，彩纸密度与节奏列入真机走查。
+- 剩余风险：撒花仅 1.4s，低端机若掉帧可能显得短促；彩纸在 1537 高视口只覆盖棋盘上半部（受寿命与重力限制），是否足够喜庆需真机确认；第 30 关通关弹层仍保留自动再玩 6.5s。
+- 下一步：用户按 `device-checklist.md` 2.14 / 2.15 / 6.3 真机复核撒花节奏、输入屏蔽与切后台行为；其余真机、广告位、红绿球来源与软著事项不变。
