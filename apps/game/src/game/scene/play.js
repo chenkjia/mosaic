@@ -22,7 +22,7 @@ const BALL_COLORS = {
   red: C.pinkDeep,
   green: C.mintDeep,
 };
-const GEM_OPTIONS = { radius: 7, light: C.white, dark: C.ink };
+const GEM_RADIUS = 7;
 const LEVEL_BY_ID = new Map();
 for (let i = 0; i < LEVELS.length; i += 1) LEVEL_BY_ID.set(LEVELS[i].id, LEVELS[i]);
 
@@ -342,7 +342,7 @@ export function createPlayScene(deps) {
         case 'wallHit':
           break;
         case 'skillFull':
-          toast.show('四个技能都已满级');
+          toast.show('暂时没有可生效的技能');
           break;
         case 'skillWasted': {
           const meta = SKILL_META[event.skill];
@@ -531,14 +531,20 @@ export function createPlayScene(deps) {
     ctx.restore();
   }
 
+  function gemOptions() {
+    const scale = sim.board.scale || 1;
+    return { radius: GEM_RADIUS * scale, light: C.white, dark: C.ink };
+  }
+
   function drawBoard(ctx) {
     const board = layout.board;
     const key = levelId + '|' + brickVersion + '|' + view.scale.toFixed(3);
+    const options = gemOptions();
     const bitmap = cache.get(key, board.w, board.h, view.scale, (c) => {
       for (let i = 0; i < sim.bricks.length; i += 1) {
         const brick = sim.bricks[i];
         if (!brick.alive) continue;
-        drawGemBrick(c, brick.x, brick.y, brick.w, brick, sim.palette, GEM_OPTIONS);
+        drawGemBrick(c, brick.x, brick.y, brick.w, brick, sim.palette, options);
       }
     });
     if (bitmap) {
@@ -551,12 +557,13 @@ export function createPlayScene(deps) {
       for (let i = 0; i < sim.bricks.length; i += 1) {
         const brick = sim.bricks[i];
         if (!brick.alive) continue;
-        drawGemBrick(ctx, board.x + brick.x, board.y + brick.y, brick.w, brick, sim.palette, GEM_OPTIONS);
+        drawGemBrick(ctx, board.x + brick.x, board.y + brick.y, brick.w, brick, sim.palette, options);
       }
     }
   }
 
   function drawDrops(ctx) {
+    const scale = sim.board.scale || 1;
     for (let i = 0; i < sim.drops.length; i += 1) {
       const drop = sim.drops[i];
       const x = BOARD.x + drop.x;
@@ -568,10 +575,10 @@ export function createPlayScene(deps) {
 
       ctx.fillStyle = 'rgba(42,35,68,0.16)';
       ctx.beginPath();
-      ctx.arc(x + 1, y + 3, drop.r, 0, Math.PI * 2);
+      ctx.arc(x + scale, y + 3 * scale, drop.r, 0, Math.PI * 2);
       ctx.fill();
 
-      const r = drop.r + 3;
+      const r = drop.r + 3 * scale;
       ctx.beginPath();
       ctx.moveTo(x, y - r);
       ctx.lineTo(x + r, y);
@@ -581,12 +588,12 @@ export function createPlayScene(deps) {
       ctx.fillStyle = debuff ? C.danger : C.gold;
       ctx.fill();
       ctx.strokeStyle = 'rgba(255,255,255,0.72)';
-      ctx.lineWidth = 1.4;
+      ctx.lineWidth = 1.4 * scale;
       ctx.stroke();
 
       ctx.save();
       ctx.translate(x, y);
-      ctx.scale(0.62, 0.62);
+      ctx.scale(0.62 * scale, 0.62 * scale);
       if (debuff) drawDebuffIcon(ctx, drop.debuff, 0, 0, C.white);
       else drawSkillIcon(ctx, drop.skill, 0, 0, C.white);
       ctx.restore();
@@ -628,6 +635,18 @@ export function createPlayScene(deps) {
         ctx.arc(x, y, ball.r * 0.55, 0, Math.PI * 2);
         ctx.stroke();
       }
+      if (ball.piercing) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.74)';
+        ctx.lineWidth = Math.max(1.6, ball.r * 0.08);
+        ctx.beginPath();
+        ctx.arc(x, y, ball.r * 0.84, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(91,75,196,0.30)';
+        ctx.lineWidth = Math.max(1, ball.r * 0.05);
+        ctx.beginPath();
+        ctx.arc(x, y, ball.r * 1.08, 0, Math.PI * 2);
+        ctx.stroke();
+      }
     }
   }
 
@@ -641,9 +660,10 @@ export function createPlayScene(deps) {
     const shrink = sim.debuffs.shrink > 0;
     const reverse = sim.debuffs.reverse > 0;
     const tint = shrink ? C.orange : reverse ? C.violet : wide ? C.blue : C.lavender;
+    const scale = sim.board.scale || 1;
 
     ctx.fillStyle = 'rgba(42,35,68,0.18)';
-    roundRectPath(ctx, x - w / 2, y - h / 2 + 4, w, h, h / 2);
+    roundRectPath(ctx, x - w / 2, y - h / 2 + 4 * scale, w, h, h / 2);
     ctx.fill();
 
     ctx.fillStyle = tint;
@@ -664,7 +684,7 @@ export function createPlayScene(deps) {
 
     ctx.fillStyle = 'rgba(255,255,255,0.72)';
     ctx.beginPath();
-    ctx.arc(x, y, 4.4, 0, Math.PI * 2);
+    ctx.arc(x, y, 4.4 * scale, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -717,8 +737,19 @@ export function createPlayScene(deps) {
       },
       skillCanCast: SKILL_IDS.map((skill) => skillCanCast(sim, skill)),
       skills: SKILL_IDS.slice(),
+      bigBall: sim.bigBall,
+      cell: sim.board.cell,
+      boardScale: sim.board.scale,
+      grid: {
+        cols: sim.board.cols,
+        rows: sim.board.rows,
+        originX: sim.board.originX,
+        originY: sim.board.originY,
+      },
       balls: sim.balls.length,
       ballKinds: sim.balls.map((ball) => ball.kind),
+      ballRadius: sim.balls.map((ball) => ball.r),
+      piercing: sim.balls.map((ball) => !!ball.piercing),
       paddleX: sim.paddle.x,
       paddleW: sim.paddle.w,
       paddleTarget,

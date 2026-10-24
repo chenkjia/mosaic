@@ -22,6 +22,14 @@ export function createState(levelInput, seed, options) {
   const level = parseLevel(levelInput);
   const opts = options || {};
   const rngSeed = (seed == null ? level.seed : seed) >>> 0;
+  const cell = level.cell;
+  const scale = cell / BOARD.cell;
+  const originX = (BOARD.w - level.cols * cell) / 2;
+  let originY = 0;
+  if (level.anchor === 'bottom') originY = BOARD.h - level.rows * cell;
+  else if (level.anchor === 'center') originY = Math.max(0, Math.floor((BOARD.h - level.rows * cell) / 2));
+  const paddleW = PADDLE.w * scale;
+  const paddleH = PADDLE.h * scale;
   const state = {
     version: 1,
     levelId: level.id,
@@ -30,17 +38,29 @@ export function createState(levelInput, seed, options) {
     phase: 'ready',
     time: 0,
     failY: Math.max(BOARD.h, finite(opts.failY, BOARD.h)),
-    board: { w: BOARD.w, h: BOARD.h, cell: BOARD.cell, inset: BOARD.inset, cols: BOARD.cols, rows: BOARD.rows },
+    board: {
+      w: BOARD.w,
+      h: BOARD.h,
+      cell,
+      scale,
+      inset: BOARD.inset,
+      cols: level.cols,
+      rows: level.rows,
+      originX,
+      originY,
+    },
     palette: level.palette.slice(),
     levelSpeed: level.ball.speed,
     bricks: [],
     balls: [],
+    baseBallR: BALL.r * scale,
+    bigBall: false,
     paddle: {
       x: BOARD.w / 2,
-      y: BOARD.h - PADDLE.bottomGap,
-      w: PADDLE.w,
-      h: PADDLE.h,
-      baseW: PADDLE.w,
+      y: BOARD.h - PADDLE.bottomInset - paddleH / 2,
+      w: paddleW,
+      h: paddleH,
+      baseW: paddleW,
     },
     drops: [],
     skillStacks: { widePaddle: 0, slow: 0 },
@@ -51,20 +71,16 @@ export function createState(levelInput, seed, options) {
     stats: { total: 0, left: 0 },
   };
 
-  const rowOffset = level.anchor === 'bottom'
-    ? BOARD.rows - level.rows
-    : Math.floor((BOARD.rows - level.rows) / 2);
-
   for (let i = 0; i < level.bricks.length; i += 1) {
     const brick = level.bricks[i];
     state.bricks.push({
       id: 'b' + i,
       col: brick.x,
       row: brick.y,
-      x: brick.x * BOARD.cell + BOARD.inset,
-      y: (brick.y + rowOffset) * BOARD.cell + BOARD.inset,
-      w: BOARD.cell - BOARD.inset * 2,
-      h: BOARD.cell - BOARD.inset * 2,
+      x: originX + brick.x * cell + BOARD.inset,
+      y: originY + brick.y * cell + BOARD.inset,
+      w: cell - BOARD.inset * 2,
+      h: cell - BOARD.inset * 2,
       type: brick.type,
       color: brick.color,
       hp: brick.hp,
@@ -78,7 +94,7 @@ export function createState(levelInput, seed, options) {
 
   const count = clamp(level.ball.count, 1, BALL.cap);
   for (let i = 0; i < count; i += 1) {
-    addBall(state, 'blue', true, (i - (count - 1) / 2) * 22);
+    addBall(state, 'blue', true, (i - (count - 1) / 2) * 22 * scale);
   }
   return state;
 }
@@ -89,27 +105,31 @@ export function addBall(state, kind, docked, offset) {
   const isDocked = docked == null ? state.phase !== 'playing' : !!docked;
   const id = state.nextId;
   state.nextId += 1;
+  const radius = state.bigBall ? state.baseBallR * SKILL.bigBallScale : state.baseBallR;
   const ball = {
     id,
     x: state.paddle.x,
-    y: state.paddle.y - state.paddle.h / 2 - BALL.r - 1,
+    y: state.paddle.y - state.paddle.h / 2 - radius - 1,
     vx: 0,
     vy: 0,
-    r: BALL.r,
+    r: radius,
     kind: type,
     docked: isDocked,
     dockOffset: 0,
     splitCooldown: 0,
+    piercing: !!state.bigBall,
+    pierced: {},
   };
   if (isDocked) {
     const count = state.balls.length + 1;
-    ball.dockOffset = offset == null ? (count % 2 === 0 ? 1 : -1) * Math.ceil(count / 2) * 18 : offset;
-    ball.x = clamp(state.paddle.x + ball.dockOffset, BALL.r, BOARD.w - BALL.r);
+    const gap = 18 * (state.board.scale || 1);
+    ball.dockOffset = offset == null ? (count % 2 === 0 ? 1 : -1) * Math.ceil(count / 2) * gap : offset;
+    ball.x = clamp(state.paddle.x + ball.dockOffset, radius, BOARD.w - radius);
   } else {
     const dir = chance(state.rng, 0.5) ? 1 : -1;
     const angle = (RULES.launchAngleDeg + nextRange(state.rng, -RULES.launchJitterDeg, RULES.launchJitterDeg)) * DEG;
     ball.x = state.paddle.x;
-    ball.y = state.paddle.y - state.paddle.h / 2 - BALL.r - 1;
+    ball.y = state.paddle.y - state.paddle.h / 2 - radius - 1;
     ball.vx = Math.sin(angle) * state.levelSpeed * dir;
     ball.vy = -Math.cos(angle) * state.levelSpeed;
   }
@@ -136,7 +156,7 @@ export function skillMultiplier(state, skill) {
 }
 
 export function skillCanCast(state, skill) {
-  if (skill === 'multiBall') return state.balls.length < BALL.cap;
+  if (skill === 'bigBall') return !state.bigBall;
   if (skill === 'split') {
     return state.balls.length < BALL.cap && state.balls.some((ball) => !ball.docked);
   }
@@ -155,11 +175,16 @@ export function castSkill(state, skill) {
   }
 
   const events = [{ type: 'skillUsed', skill }];
-  if (skill === 'multiBall') {
-    for (let i = 0; i < 2; i += 1) {
-      const ball = addBall(state, 'blue', state.phase !== 'playing');
-      if (ball) events.push({ type: 'ballSpawned', ballId: ball.id, kind: ball.kind, source: 'skill' });
+  if (skill === 'bigBall') {
+    state.bigBall = true;
+    const radius = state.baseBallR * SKILL.bigBallScale;
+    for (let i = 0; i < state.balls.length; i += 1) {
+      const ball = state.balls[i];
+      ball.r = radius;
+      ball.piercing = true;
+      ball.pierced = {};
     }
+    events[0].radius = radius;
   } else if (skill === 'widePaddle') {
     state.skillStacks.widePaddle += 1;
     updatePaddleWidth(state);
@@ -239,8 +264,8 @@ function moveDocked(state) {
   for (let i = 0; i < state.balls.length; i += 1) {
     const ball = state.balls[i];
     if (!ball.docked) continue;
-    ball.x = clamp(state.paddle.x + ball.dockOffset, BALL.r, BOARD.w - BALL.r);
-    ball.y = state.paddle.y - state.paddle.h / 2 - BALL.r - 1;
+    ball.x = clamp(state.paddle.x + ball.dockOffset, ball.r, BOARD.w - ball.r);
+    ball.y = state.paddle.y - state.paddle.h / 2 - ball.r - 1;
     ball.vx = 0;
     ball.vy = 0;
   }
@@ -284,7 +309,7 @@ function collidePaddle(state, ball, events) {
   events.push({ type: 'paddleHit', ballId: ball.id, offset, angle });
 }
 
-function collideBrick(ball, brick) {
+function brickOverlap(ball, brick) {
   const left = brick.x;
   const right = brick.x + brick.w;
   const top = brick.y;
@@ -324,7 +349,13 @@ function collideBrick(ball, brick) {
       penetration = toBottom + ball.r;
     }
   }
+  return { nx, ny, penetration };
+}
 
+function collideBrick(ball, brick) {
+  const hit = brickOverlap(ball, brick);
+  if (!hit) return null;
+  const { nx, ny, penetration } = hit;
   const vn = ball.vx * nx + ball.vy * ny;
   if (vn < 0) {
     ball.vx -= 2 * vn * nx;
@@ -333,6 +364,19 @@ function collideBrick(ball, brick) {
   ball.x += nx * (penetration + 0.01);
   ball.y += ny * (penetration + 0.01);
   return { nx, ny };
+}
+
+function pushBrickBump(events, brick, hit) {
+  events.push({
+    type: 'brickBump',
+    brickId: brick.id,
+    kind: brick.type,
+    color: brick.color,
+    x: brick.x + brick.w / 2,
+    y: brick.y + brick.h / 2,
+    nx: hit.nx,
+    ny: hit.ny,
+  });
 }
 
 function damageBrick(state, brick, amount, events) {
@@ -387,7 +431,7 @@ export function triggerDebuff(state, kind) {
 }
 
 function spawnRewardDrop(state, center, events) {
-  const available = SKILL_IDS.filter((skill) => skillCanCast(state, skill));
+  const available = SKILL_IDS.filter((skill) => skill !== 'bigBall' && skillCanCast(state, skill));
   if (available.length === 0) {
     events.push({ type: 'skillFull', skill: null });
     return;
@@ -398,7 +442,7 @@ function spawnRewardDrop(state, center, events) {
     x: center.x,
     y: center.y,
     vy: RULES.dropSpeed,
-    r: RULES.dropRadius,
+    r: RULES.dropRadius * (state.board.scale || 1),
     kind: 'skill',
     skill,
   };
@@ -414,7 +458,7 @@ function spawnDebuffDrop(state, debuff, center, events) {
     x: center.x,
     y: center.y,
     vy: RULES.dropSpeed,
-    r: RULES.dropRadius,
+    r: RULES.dropRadius * (state.board.scale || 1),
     kind: 'debuff',
     debuff,
   };
@@ -549,27 +593,42 @@ export function step(state, input, dt) {
   for (let i = 0; i < state.balls.length && state.phase === 'playing'; i += 1) {
     const ball = state.balls[i];
     if (ball.docked) continue;
-    for (let b = 0; b < state.bricks.length; b += 1) {
-      const brick = state.bricks[b];
-      if (!brick.alive) continue;
-      const hit = collideBrick(ball, brick);
-      if (!hit) continue;
-      const damage = ball.kind === 'red' && brick.type !== 'obstacle' ? 2 : 1;
-      events.push({
-        type: 'brickBump',
-        brickId: brick.id,
-        kind: brick.type,
-        color: brick.color,
-        x: brick.x + brick.w / 2,
-        y: brick.y + brick.h / 2,
-        nx: hit.nx,
-        ny: hit.ny,
-      });
-      if (brick.type !== 'obstacle') {
-        damageBrick(state, brick, damage, events);
+    if (ball.piercing) {
+      const touching = {};
+      for (let b = 0; b < state.bricks.length; b += 1) {
+        const brick = state.bricks[b];
+        if (!brick.alive) continue;
+        const hit = brickOverlap(ball, brick);
+        if (!hit) continue;
+        if (brick.type === 'obstacle') {
+          const bounce = collideBrick(ball, brick);
+          if (bounce) pushBrickBump(events, brick, bounce);
+          break;
+        }
+        touching[brick.id] = 1;
+        if (ball.pierced[brick.id]) continue;
+        ball.pierced[brick.id] = 1;
+        pushBrickBump(events, brick, hit);
+        damageBrick(state, brick, 1, events);
         if (state.phase === 'playing') splitGreenBall(state, ball, events);
       }
-      break;
+      for (const id in ball.pierced) {
+        if (!touching[id]) delete ball.pierced[id];
+      }
+    } else {
+      for (let b = 0; b < state.bricks.length; b += 1) {
+        const brick = state.bricks[b];
+        if (!brick.alive) continue;
+        const hit = collideBrick(ball, brick);
+        if (!hit) continue;
+        pushBrickBump(events, brick, hit);
+        const damage = ball.kind === 'red' && brick.type !== 'obstacle' ? 2 : 1;
+        if (brick.type !== 'obstacle') {
+          damageBrick(state, brick, damage, events);
+          if (state.phase === 'playing') splitGreenBall(state, ball, events);
+        }
+        break;
+      }
     }
   }
 

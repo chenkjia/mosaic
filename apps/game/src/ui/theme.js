@@ -46,7 +46,7 @@ export const FONT = {
 };
 
 export const SKILL_META = {
-  multiBall: { label: '多球', short: '多', color: C.pinkDeep, tip: '每次 +2 颗球' },
+  bigBall: { label: '大球', short: '大', color: C.orange, tip: '本关一次，大球穿透砖块' },
   widePaddle: { label: '加宽', short: '宽', color: C.blue, tip: '每次 +40%，封顶 2 倍' },
   split: { label: '分裂', short: '分', color: C.violet, tip: '所有移动球各分裂 1 颗' },
   slow: { label: '减速', short: '慢', color: C.mintDeep, tip: '每次 -15%，封底 0.5 倍' },

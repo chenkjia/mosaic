@@ -25,8 +25,13 @@ test('createState 规格与坐标有限', () => {
   const state = createState(makeLevel([makeBrick(5, 5)]), 42);
   assert.equal(state.board.w, BOARD.w);
   assert.equal(state.board.h, BOARD.h);
+  assert.equal(state.board.cell, BOARD.cell);
+  assert.equal(state.board.scale, 1);
+  assert.equal(state.board.originY, 0);
   assert.equal(state.paddle.w, PADDLE.w);
-  assert.equal(state.paddle.y, BOARD.h - PADDLE.bottomGap);
+  assert.equal(state.paddle.y, BOARD.h - PADDLE.bottomInset - PADDLE.h / 2);
+  assert.equal(state.baseBallR, BALL.r);
+  assert.equal(state.bigBall, false);
   assert.equal(state.phase, 'ready');
   assert.equal(state.failY, BOARD.h);
   assert.equal(state.stats.total, 1);
@@ -38,12 +43,38 @@ test('createState 规格与坐标有限', () => {
   assert.equal('effects' in state, false);
   assert.equal(state.balls.length, 1);
   assert.equal(state.balls[0].docked, true);
+  assert.equal(state.balls[0].r, BALL.r);
+  assert.equal(state.balls[0].piercing, false);
+  assert.equal(state.balls[0].y, state.paddle.y - state.paddle.h / 2 - BALL.r - 1);
   const brick = state.bricks[0];
   assert.equal(brick.x, 5 * BOARD.cell + BOARD.inset);
   assert.equal(brick.w, BOARD.cell - BOARD.inset * 2);
   for (const value of [state.paddle.x, state.paddle.y, brick.x, brick.y, state.balls[0].x, state.balls[0].y]) {
     assert.ok(Number.isFinite(value));
   }
+});
+
+test('缩放关卡：格子尺寸、挡板与球同步放大，最低砖离挡板至少 120px', () => {
+  const bricks = [];
+  for (let y = 0; y < 12; y += 1) {
+    for (let x = 0; x < 16; x += 1) bricks.push(makeBrick(x, y));
+  }
+  const level = makeLevel(bricks, { cols: 16, rows: 12, anchor: 'top' });
+  const parsed = shared.parseLevel(level);
+  assert.equal(parsed.cell, shared.cellForGrid(16, 12));
+  assert.ok(parsed.cell > BOARD.cell && parsed.cell <= BOARD.cell * 2.2);
+  const state = createState(level, 1);
+  assert.equal(state.board.cell, parsed.cell);
+  assert.equal(state.board.originY, 0);
+  assert.equal(state.board.originX, (BOARD.w - 16 * parsed.cell) / 2);
+  assert.equal(state.paddle.w, PADDLE.w * parsed.cell / BOARD.cell);
+  assert.equal(state.baseBallR, BALL.r * parsed.cell / BOARD.cell);
+  const lowest = Math.max(...state.bricks.map((brick) => brick.y + brick.h));
+  const paddleTop = state.paddle.y - state.paddle.h / 2;
+  assert.ok(paddleTop - lowest >= 120 - 0.01, '间隙 ' + (paddleTop - lowest));
+
+  const base = createState(makeLevel([makeBrick(0, 0)]), 1);
+  assert.equal(base.board.cell, BOARD.cell);
 });
 
 test('共享层不再导出充能、计时与清除率接口', () => {
@@ -128,7 +159,8 @@ test('球-墙：左右上三面反弹', () => {
 test('球-挡板：左中右击球点映射到不同反弹角', () => {
   const samples = [-60, 0, 60].map((offset) => {
     const state = createState(makeLevel([makeBrick(20, 0)]), 1);
-    putBall(state, { x: state.paddle.x + offset, y: 898, vy: 260 });
+    const paddleTop = state.paddle.y - state.paddle.h / 2;
+    putBall(state, { x: state.paddle.x + offset, y: paddleTop - BALL.r + 3, vy: 260 });
     step(state, null, DT);
     return { offset, ball: state.balls[0] };
   });
@@ -158,22 +190,20 @@ test('球-球：对心弹性碰撞并完成位置分离', () => {
   assert.ok(state.balls[1].vx > 0);
 });
 
-test('球数上限 8：分裂与多球不再生成', () => {
+test('球数上限 8：分裂不再生成，多球技能已移除', () => {
   const state = createState(makeLevel([makeBrick(20, 0)]), 1);
   state.phase = 'playing';
   for (let i = 0; i < 12; i += 1) addBall(state, 'blue', false);
   assert.equal(state.balls.length, BALL.cap);
   assert.equal(addBall(state, 'blue', false), null);
-  assert.equal(skillCanCast(state, 'multiBall'), false);
   assert.equal(skillCanCast(state, 'split'), false);
 
-  const multi = castSkill(state, 'multiBall');
-  assert.equal(multi.ok, false);
-  assert.equal(multi.reason, 'capped');
   const split = castSkill(state, 'split');
   assert.equal(split.ok, false);
   assert.equal(split.reason, 'capped');
   assert.equal(state.balls.length, BALL.cap);
+  assert.equal(skillCanCast(state, 'multiBall'), false);
+  assert.equal(castSkill(state, 'multiBall').reason, 'unknown');
 });
 
 test('球色：蓝对硬砖 1 伤，红对硬砖 2 伤，绿命中分裂', () => {
@@ -252,15 +282,101 @@ test('自定义失败线：球落到失败线以下才丢失', () => {
   assert.equal(state.phase, 'failed');
 });
 
-test('多球：每次立即 +2 颗，无充能步骤', () => {
+test('大球：立即放大全部球并永久穿透，本关不能再次施放', () => {
   const state = createState(makeLevel([makeBrick(20, 0)]), 1);
+  assert.equal(skillCanCast(state, 'bigBall'), true);
   assert.equal(state.balls.length, 1);
-  const result = castSkill(state, 'multiBall');
+  const result = castSkill(state, 'bigBall');
   assert.equal(result.ok, true);
-  assert.equal(state.balls.length, 3);
-  assert.ok(result.events.some((e) => e.type === 'skillUsed' && e.skill === 'multiBall'));
-  assert.equal(result.events.filter((e) => e.type === 'ballSpawned').length, 2);
-  assert.ok(state.balls.slice(1).every((ball) => ball.docked));
+  assert.ok(result.events.some((e) => e.type === 'skillUsed' && e.skill === 'bigBall'));
+  assert.equal(state.bigBall, true);
+  assert.equal(state.balls.length, 1);
+  assert.equal(state.balls[0].r, BALL.r * SKILL.bigBallScale);
+  assert.equal(state.balls[0].piercing, true);
+  assert.equal(skillCanCast(state, 'bigBall'), false);
+  const again = castSkill(state, 'bigBall');
+  assert.equal(again.ok, false);
+  assert.equal(again.reason, 'capped');
+
+  step(state, null, DT);
+  assert.equal(state.balls[0].y, state.paddle.y - state.paddle.h / 2 - state.balls[0].r - 1);
+
+  state.phase = 'playing';
+  const spawned = addBall(state, 'blue', false);
+  assert.equal(spawned.r, BALL.r * SKILL.bigBallScale);
+  assert.equal(spawned.piercing, true);
+  assert.deepEqual(spawned.pierced, {});
+
+  const revival = createState(makeLevel([makeBrick(20, 0)]), 1);
+  castSkill(revival, 'bigBall');
+  putBall(revival, { x: 300, y: 956, vy: 400 });
+  for (let i = 0; i < 30 && revival.phase !== 'failed'; i += 1) step(revival, null, DT);
+  assert.equal(revive(revival), true);
+  assert.equal(revival.balls[0].r, BALL.r * SKILL.bigBallScale);
+  assert.equal(revival.balls[0].piercing, true);
+});
+
+test('大球穿透：普通/奖励/减益砖进入即破，硬砖每次进入掉 1 点，障碍仍反弹', () => {
+  const state = createState(makeLevel([
+    makeBrick(8, 8, 'normal'),
+    makeBrick(12, 8, 'reward'),
+    makeBrick(16, 8, 'debuff', 1, 9, 'speed'),
+    makeBrick(4, 12),
+  ]), 1);
+  castSkill(state, 'bigBall');
+  state.phase = 'playing';
+  const ball = state.balls[0];
+  const first = cellBrick(state, 8, 8);
+  ball.docked = false;
+  ball.x = first.x + first.w / 2;
+  ball.y = first.y + first.h / 2;
+  ball.vx = 600;
+  ball.vy = 0;
+  const events = [];
+  for (let i = 0; i < 65; i += 1) events.push(...step(state, null, DT).events);
+  assert.equal(cellBrick(state, 8, 8).alive, false);
+  assert.equal(cellBrick(state, 12, 8).alive, false);
+  assert.equal(cellBrick(state, 16, 8).alive, false);
+  assert.ok(events.some((e) => e.type === 'dropSpawn' && e.kind === 'skill'));
+  assert.ok(events.some((e) => e.type === 'dropSpawn' && e.kind === 'debuff' && e.debuff === 'speed'));
+  assert.ok(ball.vx > 0, '穿透时不应反弹');
+
+  const hard = createState(makeLevel([makeBrick(10, 10, 'hard', 3)]), 1);
+  castSkill(hard, 'bigBall');
+  hard.phase = 'playing';
+  const hb = hard.balls[0];
+  const hbrick = cellBrick(hard, 10, 10);
+  hb.docked = false;
+  hb.x = hbrick.x + hbrick.w / 2;
+  hb.y = hbrick.y + hbrick.h / 2;
+  hb.vx = 0;
+  hb.vy = 0;
+  step(hard, null, DT);
+  assert.equal(hbrick.hp, 2);
+  for (let i = 0; i < 3; i += 1) step(hard, null, DT);
+  assert.equal(hbrick.hp, 2, '停留期间不重复扣血');
+  hb.x = hbrick.x - 100;
+  step(hard, null, DT);
+  hb.x = hbrick.x + hbrick.w / 2;
+  step(hard, null, DT);
+  assert.equal(hbrick.hp, 1, '再次进入再扣 1 点');
+
+  const obstacle = createState(makeLevel([
+    makeBrick(10, 10, 'obstacle'),
+    makeBrick(4, 12),
+  ]), 1);
+  castSkill(obstacle, 'bigBall');
+  obstacle.phase = 'playing';
+  const ob = obstacle.balls[0];
+  const obrick = cellBrick(obstacle, 10, 10);
+  ob.docked = false;
+  ob.x = obrick.x - 2;
+  ob.y = obrick.y + obrick.h / 2;
+  ob.vx = 300;
+  ob.vy = 0;
+  step(obstacle, null, DT);
+  assert.ok(ob.vx < 0);
+  assert.equal(obrick.alive, true);
 });
 
 test('加宽：每次 +0.4 倍、本关永久叠加，封顶 2 倍', () => {
@@ -493,7 +609,10 @@ test('奖励砖掉落随机可用技能，挡板接到立即施放', () => {
     assert.ok(events.some((e) => e.type === 'skillPickup' && e.skill === skill), skill + ' 应被拾取');
     assert.ok(events.some((e) => e.type === 'skillUsed' && e.skill === skill), skill + ' 应立即施放');
     assert.equal(state.drops.length, 0);
-    if (skill === 'multiBall') assert.equal(state.balls.length, before.balls + 2);
+    if (skill === 'bigBall') {
+      assert.equal(state.bigBall, true);
+      assert.ok(state.balls.every((ball) => ball.piercing && ball.r > BALL.r));
+    }
     if (skill === 'split') assert.equal(state.balls.length, before.balls + 1);
     if (skill === 'widePaddle') assert.equal(state.skillStacks.widePaddle, before.wide + 1);
     if (skill === 'slow') assert.equal(state.skillStacks.slow, before.slow + 1);
@@ -511,11 +630,12 @@ test('奖励砖击碎掉落技能掉落物', () => {
   assert.ok(spawn);
   assert.equal(spawn.kind, 'skill');
   assert.ok(SKILL_IDS.includes(spawn.skill));
+  assert.notEqual(spawn.skill, 'bigBall');
   assert.equal(state.drops.length, 1);
   assert.equal(state.drops[0].kind, 'skill');
 });
 
-test('四个技能都无法生效时奖励砖不掉落', () => {
+test('奖励掉落池不含大球，其余技能满级时不掉落', () => {
   const state = createState(makeLevel([
     makeBrick(10, 14, 'reward'),
     makeBrick(18, 2),
@@ -526,6 +646,7 @@ test('四个技能都无法生效时奖励砖不掉落', () => {
   state.skillStacks.slow = SKILL.slowMaxStacks;
   const { events } = step(state, null, DT);
   assert.equal(state.balls.length, BALL.cap);
+  assert.equal(state.bigBall, false);
   assert.ok(events.some((e) => e.type === 'skillFull'));
   assert.equal(state.drops.length, 0);
 });
@@ -563,7 +684,7 @@ test('技能掉落漏接不施放', () => {
     vy: 230,
     r: 11,
     kind: 'skill',
-    skill: 'multiBall',
+    skill: 'bigBall',
   });
   const before = state.balls.length;
   const { events } = step(state, null, DT);

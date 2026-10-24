@@ -1,10 +1,10 @@
-// 21×28 PNG → 16 色量化 → 关卡 JSON。派生数据只由本脚本生成，禁止手改 levels.json。
+// 关卡 PNG（任意网格尺寸）→ 16 色量化 → 关卡 JSON。派生数据只由本脚本生成，禁止手改 levels.json。
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PALETTE } from '../packages/shared/src/palette.js';
-import { quantizeGrid, validateLevel } from '../packages/shared/src/level.js';
-import { BOARD, DEBUFF_IDS } from '../packages/shared/src/constants.js';
+import { cellForGrid, quantizeGrid, validateLevel } from '../packages/shared/src/level.js';
+import { DEBUFF_IDS } from '../packages/shared/src/constants.js';
 import { decodePng } from './lib/png.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -24,10 +24,18 @@ function isEdge(grid, x, y, width, height) {
 }
 
 function buildLevel(meta, png) {
-  if (png.width !== BOARD.cols || png.height !== BOARD.rows) {
-    throw new Error(meta.name + ' 源图尺寸必须是 21×28，当前 ' + png.width + '×' + png.height);
+  const cols = png.width;
+  const rows = png.height;
+  if (!Array.isArray(meta.size) || meta.size[0] !== cols || meta.size[1] !== rows) {
+    throw new Error(meta.name + ' sidecar size 与 PNG 尺寸不一致');
   }
-  const grid = quantizeGrid(png.rgba, png.width, png.height, PALETTE);
+  const expectedCell = cellForGrid(cols, rows);
+  if (!Number.isFinite(meta.cell) || Math.abs(meta.cell - expectedCell) > 0.011) {
+    throw new Error(meta.name + ' cell 应为 ' + expectedCell + '，当前 ' + meta.cell);
+  }
+  if (meta.anchor !== 'top') throw new Error(meta.name + ' anchor 必须是 top');
+
+  const grid = quantizeGrid(png.rgba, cols, rows, PALETTE);
   const obstacleSet = new Set((meta.obstacles || []).map(([x, y]) => x + ',' + y));
   const rewardSet = new Set((meta.rewards || []).map(([x, y]) => x + ',' + y));
   const debuffMap = new Map();
@@ -46,14 +54,6 @@ function buildLevel(meta, png) {
     const [x, y] = key.split(',').map(Number);
     if (grid[y] == null || grid[y][x] == null) throw new Error(meta.name + ' 特殊砖坐标为空: ' + key);
   }
-  if (rewardSet.size !== 6) throw new Error(meta.name + ' 奖励砖必须正好 6 块');
-  if (obstacleSet.size > 8) throw new Error(meta.name + ' 障碍砖数量不能超过 8');
-  if (debuffMap.size > 4) throw new Error(meta.name + ' 减益砖数量不能超过 4');
-  for (let y = BOARD.rows - 3; y < BOARD.rows; y += 1) {
-    if ((grid[y] || []).some((color) => color != null)) {
-      throw new Error(meta.name + ' 底三行必须为空（挡板活动区）');
-    }
-  }
 
   const candidates = [];
   let destructible = 0;
@@ -64,7 +64,7 @@ function buildLevel(meta, png) {
       const key = x + ',' + y;
       if (!obstacleSet.has(key)) destructible += 1;
       if (specials.has(key)) continue;
-      const edge = isEdge(grid, x, y, png.width, png.height) ? 1 : 0;
+      const edge = isEdge(grid, x, y, cols, rows) ? 1 : 0;
       const dark = color === 2 || color === 4 ? 1 : 0;
       const score = edge * 0.36 + dark * 0.24 + hash2(meta.id, x, y) * 0.4;
       candidates.push({ x, y, color, key, score });
@@ -72,11 +72,24 @@ function buildLevel(meta, png) {
   }
   if (destructible <= 0) throw new Error(meta.name + ' 没有可破坏砖块');
 
-  // 难度随关卡递增：硬砖占比 6% → 36%，每 4 块硬砖出现 1 块 hp3。
-  const ratio = 0.06 + ((meta.id - 1) / 29) * 0.3;
+  const rewardTarget = Math.max(1, Math.min(6, Math.round(destructible / 12)));
+  if (rewardSet.size !== rewardTarget) {
+    throw new Error(meta.name + ' 奖励砖应为 ' + rewardTarget + ' 块，当前 ' + rewardSet.size);
+  }
+  if (obstacleSet.size > 8) throw new Error(meta.name + ' 障碍砖数量不能超过 8');
+  if (debuffMap.size > 4) throw new Error(meta.name + ' 减益砖数量不能超过 4');
+  if (meta.id <= 3 && (obstacleSet.size > 0 || debuffMap.size > 0)) {
+    throw new Error(meta.name + ' 前 3 关不允许障碍/减益砖');
+  }
+  if (destructible < 40 && debuffMap.size > 0) {
+    throw new Error(meta.name + ' 砖数少于 40 时不允许减益砖');
+  }
+
+  // 难度随关卡递增：第 4 关起硬砖占比 6% → 36%，每 4 块硬砖出现 1 块 hp3。
+  const ratio = meta.id >= 4 ? 0.06 + ((meta.id - 1) / 29) * 0.3 : 0;
   const hardTarget = Math.min(
-    destructible - rewardSet.size - debuffMap.size,
-    Math.max(1, Math.round(destructible * ratio)),
+    Math.max(0, destructible - rewardSet.size - debuffMap.size),
+    Math.max(meta.id >= 4 ? 1 : 0, Math.round(destructible * ratio)),
   );
   candidates.sort((a, b) => b.score - a.score || a.y - b.y || a.x - b.x);
   const hardSet = new Map();
@@ -112,11 +125,12 @@ function buildLevel(meta, png) {
   const level = {
     id: meta.id,
     theme: meta.theme,
-    cols: BOARD.cols,
-    rows: BOARD.rows,
+    cols,
+    rows,
+    cell: expectedCell,
     palette: PALETTE.slice(),
     seed: 1000 + meta.id * 7,
-    anchor: 'center',
+    anchor: 'top',
     ball: meta.ball,
     bricks,
   };

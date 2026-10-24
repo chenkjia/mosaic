@@ -22,16 +22,23 @@ export const BALL = {
 export const PADDLE = {
   w: 150,
   h: 22,
-  bottomGap: 40,
+  bottomInset: 8,
+};
+
+export const LEVEL = {
+  scaleCap: 2.2,
+  zoomClearance: 120,
+  baseClearance: 72,
 };
 
 export const STEP = 1 / 120;
 export const MAX_STEPS_PER_FRAME = 8;
 
 export const SKILL_SLOTS = 4;
-export const SKILL_IDS = ['multiBall', 'widePaddle', 'split', 'slow'];
+export const SKILL_IDS = ['bigBall', 'widePaddle', 'split', 'slow'];
 
 export const SKILL = {
+  bigBallScale: 1.6,
   wideStep: 0.4,
   wideCap: 2.0,
   wideMaxStacks: 3,

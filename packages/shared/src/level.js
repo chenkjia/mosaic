@@ -1,8 +1,10 @@
-import { BALL, BOARD, DEBUFF_IDS } from './constants.js';
+import {
+  BALL, BOARD, DEBUFF_IDS, LEVEL, PADDLE,
+} from './constants.js';
 import { PALETTE, nearestPaletteIndex, isHexColor } from './palette.js';
 
 export const BRICK_TYPES = ['normal', 'hard', 'obstacle', 'reward', 'debuff'];
-export const ANCHORS = ['center', 'bottom'];
+export const ANCHORS = ['top', 'center', 'bottom'];
 
 export function countDestructible(bricks) {
   let total = 0;
@@ -14,6 +16,21 @@ export function countDestructible(bricks) {
 
 function isInt(value) {
   return typeof value === 'number' && Number.isFinite(value) && Math.floor(value) === value;
+}
+
+// 砖块尺寸由关卡自身的网格决定：先按宽高铺满棋盘，再确保放大后最低砖块与挡板留出间距。
+export function cellForGrid(cols, rows) {
+  if (!isInt(cols) || !isInt(rows) || cols < 1 || rows < 1) return BOARD.cell;
+  const cap = BOARD.cell * LEVEL.scaleCap;
+  const widthFit = BOARD.w / cols;
+  const heightFit = BOARD.h / rows;
+  const base = Math.min(widthFit, heightFit, cap);
+  if (base <= BOARD.cell) return BOARD.cell;
+  const clearanceFit = (BOARD.h - PADDLE.bottomInset - LEVEL.zoomClearance + BOARD.inset)
+    / (rows + PADDLE.h / BOARD.cell);
+  const fit = Math.min(widthFit, heightFit, cap, clearanceFit);
+  if (fit <= BOARD.cell) return BOARD.cell;
+  return Math.max(BOARD.cell, Math.floor(fit * 100) / 100);
 }
 
 export function parseLevel(raw) {
@@ -48,6 +65,7 @@ export function parseLevel(raw) {
     theme: typeof raw.theme === 'string' && raw.theme ? raw.theme : 'animals',
     cols,
     rows,
+    cell: Number.isFinite(raw.cell) ? raw.cell : cellForGrid(cols, rows),
     palette,
     seed: isInt(raw.seed) ? raw.seed : (isInt(id) ? id * 1000 + 7 : 1007),
     anchor: ANCHORS.includes(raw.anchor) ? raw.anchor : 'center',
@@ -72,6 +90,17 @@ export function validateLevel(level) {
   if (!isInt(level.rows) || level.rows < 1 || level.rows > BOARD.rows) {
     errors.push('rows 必须在 1..' + BOARD.rows);
   }
+  if (Number.isFinite(level.cell)) {
+    const expected = cellForGrid(
+      isInt(level.cols) ? level.cols : BOARD.cols,
+      isInt(level.rows) ? level.rows : BOARD.rows,
+    );
+    if (level.cell < BOARD.cell - 1e-6 || level.cell > BOARD.cell * LEVEL.scaleCap + 1e-6) {
+      errors.push('cell 必须在 ' + BOARD.cell + '..' + (BOARD.cell * LEVEL.scaleCap).toFixed(1));
+    } else if (Math.abs(level.cell - expected) > 0.011) {
+      errors.push('cell 必须由格子尺寸推导为 ' + expected);
+    }
+  }
   if (!Array.isArray(level.palette) || level.palette.length < 1 || level.palette.length > 16) {
     errors.push('palette 必须是 1..16 色数组');
   } else {
@@ -85,7 +114,7 @@ export function validateLevel(level) {
   if (!level.ball || !Number.isFinite(level.ball.speed) || level.ball.speed < 100 || level.ball.speed > 1200) {
     errors.push('ball.speed 必须在 100..1200');
   }
-  if (level.anchor != null && !ANCHORS.includes(level.anchor)) errors.push('anchor 必须是 center 或 bottom');
+  if (level.anchor != null && !ANCHORS.includes(level.anchor)) errors.push('anchor 必须是 ' + ANCHORS.join('/'));
   if (!Array.isArray(level.bricks) || level.bricks.length < 1) {
     errors.push('bricks 不能为空');
     return { ok: errors.length === 0, errors };

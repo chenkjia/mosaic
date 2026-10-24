@@ -1,12 +1,12 @@
 export {
-  BOARD, BALL, PADDLE, STEP, MAX_STEPS_PER_FRAME, SKILL, RULES,
+  BOARD, BALL, PADDLE, LEVEL, STEP, MAX_STEPS_PER_FRAME, SKILL, RULES,
   SKILL_IDS, SKILL_SLOTS, DEBUFF_IDS, DEBUFF,
   DESIGN_WIDTH, MIN_DESIGN_H, LEVEL_COUNT, THEMES,
 } from './constants.js';
 export { PALETTE, PALETTE_RGB, hexToRgb, isHexColor, nearestPaletteIndex } from './palette.js';
 export { createRng, nextU32, nextFloat, nextRange, nextInt, chance, seedFor } from './rng.js';
 export {
-  BRICK_TYPES, ANCHORS, countDestructible, parseLevel, validateLevel,
+  BRICK_TYPES, ANCHORS, countDestructible, cellForGrid, parseLevel, validateLevel,
   gridToBricks, quantizeGrid,
 } from './level.js';
 export {

@@ -1,10 +1,12 @@
-// 生成 30 关的 21×28 像素画源图（PNG）+ 类型/难度 sidecar。
+// 生成 30 关像素画源图（PNG）+ 类型/难度 sidecar。
+// 前 6 关是小网格图标（4×3 → 9×8），第 7 关起复用 21×28 精细画并裁到图案包围盒。
 // 源图是派生 levels.json 的输入，重新跑本脚本会覆盖同名文件。
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PALETTE } from '../packages/shared/src/palette.js';
 import { DEBUFF_IDS } from '../packages/shared/src/constants.js';
+import { cellForGrid } from '../packages/shared/src/level.js';
 import { encodePng } from './lib/png.js';
 
 const W = 21;
@@ -19,17 +21,29 @@ const C = {
   gold: 10, mint: 11, teal: 12, sky: 13, blue: 14, lavender: 15,
 };
 
+function makeGrid(w, h) {
+  return Array.from({ length: h }, () => new Array(w).fill(null));
+}
+
 function grid() {
-  return Array.from({ length: H }, () => new Array(W).fill(null));
+  return makeGrid(W, H);
+}
+
+function gridW(g) {
+  return g[0].length;
+}
+
+function gridH(g) {
+  return g.length;
 }
 
 function set(g, x, y, color) {
-  if (x < 0 || x >= W || y < 0 || y >= H || color == null) return;
+  if (x < 0 || x >= gridW(g) || y < 0 || y >= gridH(g) || color == null) return;
   g[y][x] = color;
 }
 
 function clear(g, x, y) {
-  if (x < 0 || x >= W || y < 0 || y >= H) return;
+  if (x < 0 || x >= gridW(g) || y < 0 || y >= gridH(g)) return;
   g[y][x] = null;
 }
 
@@ -46,8 +60,8 @@ function clearRect(g, x, y, w, h) {
 }
 
 function ellipse(g, cx, cy, rx, ry, color) {
-  for (let y = 0; y < H; y += 1) {
-    for (let x = 0; x < W; x += 1) {
+  for (let y = 0; y < gridH(g); y += 1) {
+    for (let x = 0; x < gridW(g); x += 1) {
       const dx = (x + 0.5 - cx) / rx;
       const dy = (y + 0.5 - cy) / ry;
       if (dx * dx + dy * dy <= 1) set(g, x, y, color);
@@ -56,8 +70,8 @@ function ellipse(g, cx, cy, rx, ry, color) {
 }
 
 function clearEllipse(g, cx, cy, rx, ry) {
-  for (let y = 0; y < H; y += 1) {
-    for (let x = 0; x < W; x += 1) {
+  for (let y = 0; y < gridH(g); y += 1) {
+    for (let x = 0; x < gridW(g); x += 1) {
       const dx = (x + 0.5 - cx) / rx;
       const dy = (y + 0.5 - cy) / ry;
       if (dx * dx + dy * dy <= 1) clear(g, x, y);
@@ -68,8 +82,8 @@ function clearEllipse(g, cx, cy, rx, ry) {
 function ellipseRot(g, cx, cy, rx, ry, angle, color) {
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
-  for (let y = 0; y < H; y += 1) {
-    for (let x = 0; x < W; x += 1) {
+  for (let y = 0; y < gridH(g); y += 1) {
+    for (let x = 0; x < gridW(g); x += 1) {
       const dx = x + 0.5 - cx;
       const dy = y + 0.5 - cy;
       const u = dx * cos + dy * sin;
@@ -91,8 +105,8 @@ function polygon(g, points, color) {
     minY = Math.min(minY, p[1]);
     maxY = Math.max(maxY, p[1]);
   }
-  for (let y = Math.max(0, Math.floor(minY)); y <= Math.min(H - 1, Math.ceil(maxY)); y += 1) {
-    for (let x = 0; x < W; x += 1) {
+  for (let y = Math.max(0, Math.floor(minY)); y <= Math.min(gridH(g) - 1, Math.ceil(maxY)); y += 1) {
+    for (let x = 0; x < gridW(g); x += 1) {
       const px = x + 0.5;
       const py = y + 0.5;
       let inside = false;
@@ -133,8 +147,8 @@ function line(g, x0, y0, x1, y1, color, thick = 1) {
 }
 
 function arcBand(g, cx, cy, r0, r1, color, angleFrom, angleTo) {
-  for (let y = 0; y < H; y += 1) {
-    for (let x = 0; x < W; x += 1) {
+  for (let y = 0; y < gridH(g); y += 1) {
+    for (let x = 0; x < gridW(g); x += 1) {
       const dx = x + 0.5 - cx;
       const dy = y + 0.5 - cy;
       const dist = Math.sqrt(dx * dx + dy * dy);
@@ -148,8 +162,8 @@ function arcBand(g, cx, cy, r0, r1, color, angleFrom, angleTo) {
 
 function cells(g) {
   const out = [];
-  for (let y = 0; y < H; y += 1) {
-    for (let x = 0; x < W; x += 1) {
+  for (let y = 0; y < gridH(g); y += 1) {
+    for (let x = 0; x < gridW(g); x += 1) {
       if (g[y][x] != null) out.push({ x, y, color: g[y][x] });
     }
   }
@@ -158,8 +172,8 @@ function cells(g) {
 
 function findCells(g, predicate, limit) {
   const out = [];
-  for (let y = 0; y < H && out.length < limit; y += 1) {
-    for (let x = 0; x < W && out.length < limit; x += 1) {
+  for (let y = 0; y < gridH(g) && out.length < limit; y += 1) {
+    for (let x = 0; x < gridW(g) && out.length < limit; x += 1) {
       if (g[y][x] != null && predicate(g[y][x], x, y)) out.push([x, y]);
     }
   }
@@ -172,8 +186,8 @@ function paint(g, points, color) {
 }
 
 function shadeBottom(g, color, rows = 2) {
-  for (let y = H - rows; y < H; y += 1) {
-    for (let x = 0; x < W; x += 1) {
+  for (let y = gridH(g) - rows; y < gridH(g); y += 1) {
+    for (let x = 0; x < gridW(g); x += 1) {
       if (g[y][x] != null) g[y][x] = color;
     }
   }
@@ -203,158 +217,114 @@ function pot(g, obstacles) {
   }
 }
 
-// ---------- 动物 ----------
+// ---------- 新手图标：4×3 → 9×8 小网格，砖块随格子放大 ----------
+// 每关砖数固定：10 / 16 / 24 / 34 / 46 / 60，靠形状本身控制，不靠缩图。
 
 function cat(g) {
-  polygon(g, [[3, 5], [9, 10], [3, 13]], C.violet);
-  polygon(g, [[4, 6], [8, 10], [4, 11]], C.peach);
-  polygon(g, [[17, 5], [11, 10], [17, 13]], C.violet);
-  polygon(g, [[16, 6], [12, 10], [16, 11]], C.peach);
-  blob(g, 10, 15.5, 6.8, 6, C.peach, C.violet);
-  ellipse(g, 7, 14, 1.1, 1.4, C.dark);
-  ellipse(g, 13, 14, 1.1, 1.4, C.dark);
-  set(g, 7, 13, C.white);
-  set(g, 13, 13, C.white);
-  set(g, 10, 17, C.rose);
-  line(g, 10, 18, 9, 19, C.dark);
-  line(g, 10, 18, 11, 19, C.dark);
-  line(g, 2, 17, 5, 18, C.violet);
-  line(g, 2, 19, 5, 19, C.violet);
-  line(g, 18, 17, 15, 18, C.violet);
-  line(g, 18, 19, 15, 19, C.violet);
-  ellipse(g, 10, 24, 4.5, 3, C.peach);
-  ellipse(g, 10, 24.5, 2.5, 1.6, C.cream);
-  set(g, 10, 22, C.gold);
-  set(g, 9, 22, C.gold);
-  set(g, 11, 22, C.gold);
-  shadeBottom(g, C.lilac, 2);
-  const obstacles = [[6, 26], [7, 26], [13, 26], [14, 26]];
-  for (const [x, y] of obstacles) set(g, x, y, C.violet);
-  const rewards = [[9, 22], [10, 22], [11, 22]];
-  return { rewards, obstacles };
+  for (let x = 0; x < 4; x += 1) {
+    set(g, x, 1, C.cream);
+    set(g, x, 2, C.cream);
+  }
+  set(g, 0, 0, C.peach);
+  set(g, 3, 0, C.peach);
+  set(g, 1, 1, C.dark);
+  set(g, 2, 1, C.dark);
+  set(g, 1, 2, C.rose);
+  set(g, 2, 2, C.rose);
+  return { rewards: [], obstacles: [] };
 }
 
 function bunny(g) {
-  ellipseRot(g, 7.5, 6, 2.3, 5.5, -0.08, C.violet);
-  ellipseRot(g, 13.5, 6, 2.3, 5.5, 0.08, C.violet);
-  ellipseRot(g, 7.5, 6, 1.5, 4.6, -0.08, C.white);
-  ellipseRot(g, 13.5, 6, 1.5, 4.6, 0.08, C.white);
-  ellipseRot(g, 7.5, 6, 0.8, 3.2, -0.08, C.pink);
-  ellipseRot(g, 13.5, 6, 0.8, 3.2, 0.08, C.pink);
-  blob(g, 10, 15, 6.5, 5.6, C.white, C.violet);
-  ellipse(g, 7, 14, 1.1, 1.4, C.dark);
-  ellipse(g, 13, 14, 1.1, 1.4, C.dark);
-  set(g, 7, 13, C.white);
-  set(g, 13, 13, C.white);
-  set(g, 10, 17, C.pink);
-  line(g, 10, 18, 9, 19, C.dark);
-  line(g, 10, 18, 11, 19, C.dark);
-  ellipse(g, 6, 18, 1.4, 0.9, C.pink);
-  ellipse(g, 14, 18, 1.4, 0.9, C.pink);
-  blob(g, 10, 24, 4.6, 2.8, C.white, C.violet);
-  polygon(g, [[15, 21], [18, 21], [16.5, 24]], C.coral);
-  set(g, 15, 20, C.mint);
-  set(g, 16, 20, C.mint);
-  set(g, 16, 21, C.gold);
-  set(g, 17, 21, C.gold);
-  shadeBottom(g, C.lilac, 1);
-  return { rewards: [[16, 21], [17, 21], [10, 24]], obstacles: [] };
+  set(g, 1, 0, C.pink);
+  set(g, 3, 0, C.pink);
+  for (const x of [0, 1, 3, 4]) set(g, x, 1, C.white);
+  set(g, 0, 1, C.peach);
+  set(g, 4, 1, C.peach);
+  for (let x = 0; x < 5; x += 1) set(g, x, 2, C.white);
+  for (let x = 0; x < 5; x += 1) set(g, x, 3, C.white);
+  set(g, 1, 2, C.dark);
+  set(g, 3, 2, C.dark);
+  set(g, 2, 2, C.rose);
+  set(g, 0, 3, C.pink);
+  set(g, 4, 3, C.pink);
+  return { rewards: [], obstacles: [] };
 }
 
 function bear(g) {
-  ellipse(g, 4.5, 7, 3, 3, C.violet);
-  ellipse(g, 15.5, 7, 3, 3, C.violet);
-  ellipse(g, 4.5, 7, 2.1, 2.1, C.peach);
-  ellipse(g, 15.5, 7, 2.1, 2.1, C.peach);
-  blob(g, 10, 15, 7, 6.2, C.peach, C.violet);
-  ellipse(g, 10, 18.5, 3.6, 2.6, C.cream);
-  ellipse(g, 10, 17.2, 1.4, 1.1, C.dark);
-  line(g, 10, 18, 9, 19, C.dark);
-  line(g, 10, 18, 11, 19, C.dark);
-  ellipse(g, 6.5, 13.5, 1, 1.2, C.dark);
-  ellipse(g, 13.5, 13.5, 1, 1.2, C.dark);
-  set(g, 6, 13, C.white);
-  set(g, 13, 13, C.white);
-  ellipse(g, 10, 25, 4.5, 2.2, C.peach);
-  rect(g, 8, 23, 5, 3, C.gold);
-  set(g, 8, 23, C.violet);
-  set(g, 12, 23, C.violet);
-  const rewards = [[9, 24], [10, 24], [11, 24]];
-  const obstacles = [[7, 25], [8, 25], [12, 25], [13, 25]];
-  for (const [x, y] of obstacles) set(g, x, y, C.violet);
-  return { rewards, obstacles };
+  for (const x of [0, 1, 4, 5]) set(g, x, 0, C.coral);
+  for (let y = 1; y <= 3; y += 1) {
+    for (let x = 0; x < 6; x += 1) set(g, x, y, C.peach);
+  }
+  set(g, 2, 4, C.peach);
+  set(g, 3, 4, C.peach);
+  set(g, 1, 2, C.dark);
+  set(g, 4, 2, C.dark);
+  set(g, 2, 3, C.cream);
+  set(g, 3, 3, C.cream);
+  set(g, 2, 2, C.gold);
+  set(g, 3, 2, C.gold);
+  return { rewards: [], obstacles: [] };
 }
 
 function fox(g) {
-  polygon(g, [[3, 14], [5, 4], [10, 11]], C.rose);
-  polygon(g, [[18, 14], [16, 4], [11, 11]], C.rose);
-  polygon(g, [[5, 6], [6, 10], [8, 11]], C.dark);
-  polygon(g, [[16, 6], [15, 10], [13, 11]], C.dark);
-  polygon(g, [[3, 14], [10, 7], [18, 14], [10, 22]], C.coral);
-  blob(g, 10, 17, 5.5, 4.5, C.coral, C.rose);
-  ellipse(g, 10, 18.5, 3.2, 2.4, C.white);
-  ellipse(g, 10, 17.4, 1.3, 1, C.dark);
-  ellipse(g, 6.5, 14, 1.2, 1.5, C.dark);
-  ellipse(g, 13.5, 14, 1.2, 1.5, C.dark);
-  set(g, 6, 13, C.white);
-  set(g, 13, 13, C.white);
-  line(g, 10, 19, 9, 20, C.dark);
-  line(g, 10, 19, 11, 20, C.dark);
-  set(g, 4, 18, C.white);
-  set(g, 16, 18, C.white);
-  shadeBottom(g, C.lilac, 1);
-  const rewards = [[9, 21], [10, 21], [11, 21]];
-  for (const [x, y] of rewards) set(g, x, y, C.gold);
-  return { rewards, obstacles: [] };
+  for (const x of [0, 1, 5, 6]) set(g, x, 0, C.dark);
+  for (const x of [0, 1, 2, 4, 5, 6]) set(g, x, 1, C.coral);
+  for (let y = 2; y <= 3; y += 1) {
+    for (let x = 0; x < 7; x += 1) set(g, x, y, C.coral);
+  }
+  for (let x = 1; x <= 5; x += 1) {
+    set(g, x, 4, C.coral);
+    set(g, x, 5, C.coral);
+  }
+  set(g, 2, 2, C.dark);
+  set(g, 4, 2, C.dark);
+  set(g, 3, 3, C.white);
+  set(g, 2, 4, C.white);
+  set(g, 3, 4, C.white);
+  set(g, 4, 4, C.white);
+  set(g, 3, 5, C.white);
+  return { rewards: [], obstacles: [] };
 }
 
 function panda(g) {
-  ellipse(g, 4, 6, 3, 3, C.dark);
-  ellipse(g, 16, 6, 3, 3, C.dark);
-  blob(g, 10, 15, 7, 6.2, C.white, C.violet);
-  ellipseRot(g, 6.5, 13.5, 2.2, 3, 0.35, C.dark);
-  ellipseRot(g, 13.5, 13.5, 2.2, 3, -0.35, C.dark);
-  set(g, 6, 13, C.white);
-  set(g, 14, 13, C.white);
-  ellipse(g, 10, 17, 1.3, 1, C.dark);
-  line(g, 10, 18, 9, 19, C.dark);
-  line(g, 10, 18, 11, 19, C.dark);
-  blob(g, 10, 24, 5.5, 3.2, C.dark, C.violet);
-  ellipse(g, 10, 24, 3, 2, C.white);
-  rect(g, 17, 4, 2, 20, C.mint);
-  for (let y = 6; y < 24; y += 3) rect(g, 17, y, 2, 1, C.teal);
-  set(g, 16, 8, C.mint);
-  set(g, 19, 12, C.mint);
-  set(g, 16, 16, C.mint);
-  shadeBottom(g, C.lilac, 1);
-  const obstacles = [[18, 20], [18, 21]];
-  for (const [x, y] of obstacles) set(g, x, y, C.violet);
-  const rewards = [[9, 11], [10, 11], [11, 11]];
-  for (const [x, y] of rewards) set(g, x, y, C.gold);
-  return { rewards, obstacles };
+  for (const x of [1, 2, 5, 6]) set(g, x, 0, C.dark);
+  for (let x = 1; x <= 6; x += 1) set(g, x, 1, C.white);
+  for (let y = 2; y <= 4; y += 1) {
+    for (let x = 0; x < 8; x += 1) set(g, x, y, C.white);
+  }
+  for (let y = 5; y <= 6; y += 1) {
+    for (let x = 1; x <= 6; x += 1) set(g, x, y, C.white);
+  }
+  set(g, 2, 3, C.dark);
+  set(g, 5, 3, C.dark);
+  set(g, 3, 2, C.mint);
+  set(g, 4, 2, C.mint);
+  set(g, 3, 4, C.dark);
+  set(g, 4, 4, C.dark);
+  set(g, 3, 5, C.mint);
+  set(g, 4, 5, C.mint);
+  return { rewards: [], obstacles: [] };
 }
 
 function frog(g) {
-  blob(g, 10, 17, 7.2, 5.8, C.mint, C.teal);
-  ellipse(g, 5.5, 10, 3, 3, C.teal);
-  ellipse(g, 14.5, 10, 3, 3, C.teal);
-  ellipse(g, 5.5, 10, 2.1, 2.1, C.white);
-  ellipse(g, 14.5, 10, 2.1, 2.1, C.white);
-  ellipse(g, 5.5, 10, 1.1, 1.3, C.dark);
-  ellipse(g, 14.5, 10, 1.1, 1.3, C.dark);
-  line(g, 5, 18, 15, 18, C.teal);
-  set(g, 4, 20, C.teal);
-  set(g, 16, 20, C.teal);
-  ellipse(g, 10, 22, 4.5, 2.5, C.cream);
-  ellipse(g, 10, 24, 3, 2, C.mint);
-  set(g, 8, 16, C.teal);
-  set(g, 12, 16, C.teal);
-  shadeBottom(g, C.teal, 1);
-  const rewards = [[8, 20], [10, 21], [12, 20]];
-  for (const [x, y] of rewards) set(g, x, y, C.gold);
-  const obstacles = [[3, 25], [4, 25], [16, 25], [17, 25]];
-  for (const [x, y] of obstacles) set(g, x, y, C.teal);
-  return { rewards, obstacles };
+  for (const x of [1, 2, 3, 5, 6, 7]) set(g, x, 0, C.white);
+  for (const x of [1, 2, 3, 5, 6, 7]) set(g, x, 1, C.mint);
+  for (let x = 1; x <= 7; x += 1) set(g, x, 2, C.mint);
+  for (let y = 3; y <= 5; y += 1) {
+    for (let x = 0; x < 9; x += 1) set(g, x, y, C.mint);
+  }
+  for (let x = 1; x <= 7; x += 1) {
+    set(g, x, 6, C.mint);
+    set(g, x, 7, C.mint);
+  }
+  set(g, 2, 1, C.dark);
+  set(g, 6, 1, C.dark);
+  set(g, 3, 4, C.dark);
+  set(g, 4, 4, C.dark);
+  set(g, 5, 4, C.dark);
+  set(g, 0, 5, C.teal);
+  set(g, 8, 5, C.teal);
+  return { rewards: [], obstacles: [] };
 }
 
 function chick(g) {
@@ -866,12 +836,12 @@ function castle(g) {
 }
 
 const LEVELS = [
-  { name: 'cat', theme: 'animals', art: cat, title: '猫咪' },
-  { name: 'bunny', theme: 'animals', art: bunny, title: '兔子' },
-  { name: 'bear', theme: 'animals', art: bear, title: '小熊' },
-  { name: 'fox', theme: 'animals', art: fox, title: '狐狸' },
-  { name: 'panda', theme: 'animals', art: panda, title: '熊猫' },
-  { name: 'frog', theme: 'animals', art: frog, title: '青蛙' },
+  { name: 'cat', theme: 'animals', art: cat, title: '猫咪', cols: 4, rows: 3, bricks: 10 },
+  { name: 'bunny', theme: 'animals', art: bunny, title: '兔子', cols: 5, rows: 4, bricks: 16 },
+  { name: 'bear', theme: 'animals', art: bear, title: '小熊', cols: 6, rows: 5, bricks: 24 },
+  { name: 'fox', theme: 'animals', art: fox, title: '狐狸', cols: 7, rows: 6, bricks: 34 },
+  { name: 'panda', theme: 'animals', art: panda, title: '熊猫', cols: 8, rows: 7, bricks: 46 },
+  { name: 'frog', theme: 'animals', art: frog, title: '青蛙', cols: 9, rows: 8, bricks: 60 },
   { name: 'chick', theme: 'animals', art: chick, title: '小鸡' },
   { name: 'fish', theme: 'animals', art: fish, title: '小鱼' },
   { name: 'butterfly', theme: 'animals', art: butterfly, title: '蝴蝶' },
@@ -916,8 +886,8 @@ function chooseSpread(g, blocked, count, id, salt) {
   const candidates = [];
   let sumX = 0;
   let sumY = 0;
-  for (let y = 0; y < PLAY_ROWS; y += 1) {
-    for (let x = 0; x < W; x += 1) {
+  for (let y = 0; y < gridH(g); y += 1) {
+    for (let x = 0; x < gridW(g); x += 1) {
       if (g[y][x] == null || blocked.has(x + ',' + y)) continue;
       candidates.push({ x, y });
       sumX += x;
@@ -969,10 +939,15 @@ function chooseSpread(g, blocked, count, id, salt) {
 // 底三行留给挡板活动区，像素画只能落在 0..24 行。
 const PLAY_ROWS = 25;
 
+// 1–10 关为明确砖数目标，先从 10 块慢坡爬到 120 块；11 关后沿用原有难度带。
+const TARGETS = [10, 16, 24, 34, 46, 60, 76, 90, 105, 120];
+
 const BANDS = [
-  { from: 1, to: 3, min: 70, max: 90 },
-  { from: 4, to: 7, min: 90, max: 120 },
-  { from: 8, to: 12, min: 120, max: 150 },
+  { from: 7, to: 7, min: 76, max: 76 },
+  { from: 8, to: 8, min: 90, max: 90 },
+  { from: 9, to: 9, min: 105, max: 105 },
+  { from: 10, to: 10, min: 120, max: 120 },
+  { from: 11, to: 12, min: 120, max: 150 },
   { from: 13, to: 16, min: 150, max: 175 },
   { from: 17, to: 19, min: 175, max: 199 },
   { from: 20, to: 24, min: 200, max: 250 },
@@ -984,6 +959,10 @@ function bandFor(id) {
     if (id >= band.from && id <= band.to) return band;
   }
   throw new Error('关卡 ' + id + ' 没有难度带');
+}
+
+function rewardCountFor(total) {
+  return Math.max(1, Math.min(6, Math.round(total / 12)));
 }
 
 function maskGrid() {
@@ -1026,12 +1005,16 @@ function rescale(g, mask, destH) {
 
 function countDestructibleGrid(g, mask) {
   let total = 0;
-  for (let y = 0; y < PLAY_ROWS; y += 1) {
-    for (let x = 0; x < W; x += 1) {
-      if (g[y][x] != null && !mask[y][x]) total += 1;
+  for (let y = 0; y < gridH(g); y += 1) {
+    for (let x = 0; x < gridW(g); x += 1) {
+      if (g[y][x] != null && !(mask[y] && mask[y][x])) total += 1;
     }
   }
   return total;
+}
+
+function makeMask(w, h) {
+  return Array.from({ length: h }, () => new Array(w).fill(false));
 }
 
 // 取能满足砖数上限的最大缩放，像素画占满 25 行时即“接近满屏”。
@@ -1050,27 +1033,71 @@ function backdropColor(theme, name) {
   return C.cream;
 }
 
-// 高关卡砖数不够时，从顶部按行补背景砖，保持图案轮廓完整。
+function contentBounds(g) {
+  let minX = gridW(g);
+  let maxX = -1;
+  let minY = gridH(g);
+  let maxY = -1;
+  for (let y = 0; y < gridH(g); y += 1) {
+    for (let x = 0; x < gridW(g); x += 1) {
+      if (g[y][x] == null) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < 0) throw new Error('像素画为空');
+  return { minX, maxX, minY, maxY };
+}
+
+// 只补图案包围盒内部与上方，不把画布扩成满宽。
 function fillBackdrop(g, need, color, name) {
   let left = need;
-  for (let y = 0; y < PLAY_ROWS && left > 0; y += 1) {
-    for (let x = 0; x < W && left > 0; x += 1) {
+  const box = contentBounds(g);
+  for (let y = box.minY; y <= box.maxY && left > 0; y += 1) {
+    for (let x = box.minX; x <= box.maxX && left > 0; x += 1) {
       if (g[y][x] != null) continue;
       g[y][x] = color;
       left -= 1;
     }
   }
-  if (left > 0) throw new Error(name + ' 背景填充不足，仍缺 ' + left);
+  let top = box.minY;
+  while (left > 0) {
+    if (top <= 0) throw new Error(name + ' 背景填充不足，仍缺 ' + left);
+    top -= 1;
+    for (let x = box.minX; x <= box.maxX && left > 0; x += 1) {
+      g[top][x] = color;
+      left -= 1;
+    }
+  }
 }
 
 function maskCells(mask) {
   const out = [];
-  for (let y = 0; y < PLAY_ROWS; y += 1) {
-    for (let x = 0; x < W; x += 1) {
+  for (let y = 0; y < mask.length; y += 1) {
+    for (let x = 0; x < mask[y].length; x += 1) {
       if (mask[y][x]) out.push([x, y]);
     }
   }
   return out;
+}
+
+function cropGrid(g, mask) {
+  const box = contentBounds(g);
+  const cols = box.maxX - box.minX + 1;
+  const rows = box.maxY - box.minY + 1;
+  const out = makeGrid(cols, rows);
+  const outMask = makeGrid(cols, rows).map((row) => row.map(() => false));
+  for (let y = 0; y < rows; y += 1) {
+    for (let x = 0; x < cols; x += 1) {
+      const sx = box.minX + x;
+      const sy = box.minY + y;
+      out[y][x] = g[sy][sx];
+      outMask[y][x] = !!(mask && mask[sy] && mask[sy][sx]);
+    }
+  }
+  return { g: out, mask: outMask, cols, rows };
 }
 
 function debuffCountFor(id) {
@@ -1087,12 +1114,14 @@ function debuffKindsFor(id, count) {
 }
 
 function toRgba(g) {
-  const rgba = Buffer.alloc(W * H * 4);
-  for (let y = 0; y < H; y += 1) {
-    for (let x = 0; x < W; x += 1) {
+  const w = gridW(g);
+  const h = gridH(g);
+  const rgba = Buffer.alloc(w * h * 4);
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
       const color = g[y][x];
       if (color == null) continue;
-      const offset = (y * W + x) * 4;
+      const offset = (y * w + x) * 4;
       const rgb = PALETTE[color];
       const n = parseInt(rgb.slice(1), 16);
       rgba[offset] = (n >> 16) & 255;
@@ -1168,55 +1197,77 @@ function main() {
   for (let i = 0; i < LEVELS.length; i += 1) {
     const id = i + 1;
     const def = LEVELS[i];
-    const art = grid();
+    const icon = def.cols != null;
+    const art = icon ? makeGrid(def.cols, def.rows) : grid();
     const result = def.art(art);
-    const artMask = maskGrid();
+    const artMask = icon ? makeMask(def.cols, def.rows) : maskGrid();
     for (const [x, y] of result.obstacles) {
       if (art[y][x] == null) throw new Error(def.name + ' 障碍坐标为空: ' + x + ',' + y);
       artMask[y][x] = true;
     }
 
-    const band = bandFor(id);
-    const fitted = fitToBand(art, artMask, band, def.name);
-    if (fitted.count < band.min) {
-      fillBackdrop(fitted.g, band.min - fitted.count, backdropColor(def.theme, def.name), def.name);
-    }
-    const count = countDestructibleGrid(fitted.g, fitted.mask);
-    if (count < band.min || count > band.max) {
-      throw new Error(def.name + ' 砖数 ' + count + ' 超出区间 ' + band.min + '..' + band.max);
+    let fitted;
+    if (icon) {
+      fitted = { g: art, mask: artMask };
+      const iconCount = countDestructibleGrid(art, artMask);
+      if (iconCount !== def.bricks) {
+        throw new Error(def.name + ' 图标砖数应为 ' + def.bricks + '，实际 ' + iconCount);
+      }
+    } else {
+      const band = bandFor(id);
+      fitted = fitToBand(art, artMask, band, def.name);
+      if (fitted.count < band.min) {
+        fillBackdrop(fitted.g, band.min - fitted.count, backdropColor(def.theme, def.name), def.name);
+      }
+      const fittedCount = countDestructibleGrid(fitted.g, fitted.mask);
+      if (fittedCount < band.min || fittedCount > band.max) {
+        throw new Error(def.name + ' 砖数 ' + fittedCount + ' 超出区间 ' + band.min + '..' + band.max);
+      }
     }
 
-    const obstacles = maskCells(fitted.mask);
+    const count = countDestructibleGrid(fitted.g, fitted.mask);
+    if (id <= TARGETS.length && count !== TARGETS[id - 1]) {
+      throw new Error(def.name + ' 目标砖数应为 ' + TARGETS[id - 1] + '，实际 ' + count);
+    }
+
+    // 裁到图案包围盒：小图放大成大方砖，大图保持接近满尺寸。
+    const cropped = cropGrid(fitted.g, fitted.mask);
+    const obstacles = maskCells(cropped.mask);
     const blocked = new Set(obstacles.map(([x, y]) => x + ',' + y));
-    const rewards = chooseSpread(fitted.g, blocked, 6, id, 0);
-    if (rewards.length !== 6) throw new Error(def.name + ' 奖励砖应为 6 块，实际 ' + rewards.length);
+    const rewardCount = rewardCountFor(count);
+    const rewards = chooseSpread(cropped.g, blocked, rewardCount, id, 0);
+    if (rewards.length !== rewardCount) {
+      throw new Error(def.name + ' 奖励砖应为 ' + rewardCount + ' 块，实际 ' + rewards.length);
+    }
     for (const [x, y] of rewards) {
       blocked.add(x + ',' + y);
-      set(fitted.g, x, y, C.gold);
+      set(cropped.g, x, y, C.gold);
     }
-    const debuffs = chooseSpread(fitted.g, blocked, debuffCountFor(id), id, 977);
+    const debuffCount = count < 40 ? 0 : debuffCountFor(id);
+    const debuffs = chooseSpread(cropped.g, blocked, debuffCount, id, 977);
     const kinds = debuffKindsFor(id, debuffs.length);
     const debuffMeta = debuffs.map(([x, y], index) => {
-      set(fitted.g, x, y, C.dark);
+      set(cropped.g, x, y, C.dark);
       return [x, y, kinds[index]];
     });
-
-    const all = cells(fitted.g);
-    for (let y = PLAY_ROWS; y < H; y += 1) {
-      if (fitted.g[y].some((color) => color != null)) throw new Error(def.name + ' 底三行必须为空');
-    }
-    for (const [x, y] of rewards) {
-      if (fitted.g[y][x] == null) throw new Error(def.name + ' 奖励坐标为空: ' + x + ',' + y);
+    for (const [x, y] of debuffs) {
+      if (cropped.g[y][x] == null) throw new Error(def.name + ' 减益坐标为空: ' + x + ',' + y);
     }
 
+    const cell = cellForGrid(cropped.cols, cropped.rows);
     const base = String(id).padStart(2, '0') + '-' + def.name;
-    writeFileSync(path.join(SRC_DIR, base + '.png'), encodePng(W, H, toRgba(fitted.g)));
+    writeFileSync(
+      path.join(SRC_DIR, base + '.png'),
+      encodePng(cropped.cols, cropped.rows, toRgba(cropped.g)),
+    );
     const meta = {
       id,
       name: def.name,
       title: def.title,
       theme: def.theme,
-      size: [W, H],
+      size: [cropped.cols, cropped.rows],
+      cell,
+      anchor: 'top',
       ball: configFor(id),
       obstacles,
       rewards,
@@ -1226,22 +1277,27 @@ function main() {
     report.push({
       id,
       name: def.name,
-      bricks: all.length,
       destructible: count,
+      rewards: rewards.length,
       debuffs: debuffMeta.length,
+      obstacles: obstacles.length,
+      cols: cropped.cols,
+      rows: cropped.rows,
+      cell,
       speed: meta.ball.speed,
       balls: meta.ball.count,
-      scale: fitted.destH,
     });
   }
   writeFileSync(path.join(COVER_DIR, 'cover.png'), makeCover());
   console.log('[levels] 生成 ' + LEVELS.length + ' 关源图 → assets/levels/src/');
   for (const row of report) {
     console.log('  ' + String(row.id).padStart(2, '0') + ' ' + row.name.padEnd(10)
-      + ' bricks ' + String(row.bricks).padStart(3)
-      + ' · destructible ' + String(row.destructible).padStart(3)
+      + ' bricks ' + String(row.destructible).padStart(3)
+      + ' · reward ' + row.rewards
       + ' · debuff ' + row.debuffs
-      + ' · scale ' + row.scale + '/25'
+      + ' · obstacle ' + row.obstacles
+      + ' · grid ' + row.cols + '×' + row.rows
+      + ' · cell ' + row.cell.toFixed(2)
       + ' · balls ' + row.balls + ' · speed ' + row.speed);
   }
   console.log('[levels] 分享封面 → apps/game/assets/share/cover.png');

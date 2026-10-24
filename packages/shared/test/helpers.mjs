@@ -23,8 +23,9 @@ export function makeLevel(bricks, overrides) {
   return {
     id: opts.id == null ? 1 : opts.id,
     theme: opts.theme || 'animals',
-    cols: 21,
-    rows: 28,
+    cols: opts.cols == null ? 21 : opts.cols,
+    rows: opts.rows == null ? 28 : opts.rows,
+    cell: opts.cell,
     palette: PALETTE.slice(),
     seed: opts.seed == null ? 1001 : opts.seed,
     ball: { count: opts.ballCount == null ? 1 : opts.ballCount, speed: opts.speed == null ? 640 : opts.speed },
@@ -42,11 +43,13 @@ export function putBall(state, options) {
     y: opts.y,
     vx: opts.vx || 0,
     vy: opts.vy || 0,
-    r: 9,
+    r: opts.r == null ? state.baseBallR : opts.r,
     kind: opts.kind || 'blue',
     docked: false,
     dockOffset: 0,
     splitCooldown: 0,
+    piercing: !!opts.piercing,
+    pierced: {},
   }];
   return state.balls[0];
 }

@@ -148,9 +148,11 @@ test('宝石砖各状态绘制坐标均为有限值', () => {
     { type: 'debuff', hp: 1, color: 4, debuff: 'reverse' },
   ];
   for (const brick of cases) {
-    const ctx = makeCtx();
-    drawGemBrick(ctx, 10.5, 20.5, 31, brick, PALETTE, { radius: 7 });
-    assertFinite(ctx, brick.type + ':' + (brick.debuff || ''));
+    for (const size of [31, 68.2]) {
+      const ctx = makeCtx();
+      drawGemBrick(ctx, 10.5, 20.5, size, brick, PALETTE, { radius: 7 * (size / 31) });
+      assertFinite(ctx, brick.type + ':' + (brick.debuff || '') + '@' + size);
+    }
   }
 });
 
@@ -167,6 +169,7 @@ test('HUD 只显示递增的已清除 / 总数，四格技能格是可点的广�
     time: 100,
     balls: [{ docked: false, kind: 'blue' }],
     skillStacks: { widePaddle: 0, slow: 0 },
+    bigBall: false,
   };
   drawSkillBar(ctx, layout, sim, 1000);
   assertFinite(ctx, 'hud+skill');
@@ -175,7 +178,7 @@ test('HUD 只显示递增的已清除 / 总数，四格技能格是可点的广�
   assert.equal(ctx.texts.includes('剩余 / 总数'), false);
   assert.equal(ctx.texts.includes('可破坏'), false);
   assert.equal(countText(ctx, '看广告'), 4);
-  assert.ok(ctx.texts.includes('多球'));
+  assert.ok(ctx.texts.includes('大球'));
   assert.ok(ctx.texts.includes('加宽'));
   assert.ok(ctx.texts.includes('分裂'));
   assert.ok(ctx.texts.includes('减速'));
@@ -194,6 +197,7 @@ test('技能格显示当前倍率，满级显示已满，无移动球显示无�
   drawSkillBar(stacked, layout, {
     balls: [{ docked: true, kind: 'blue' }],
     skillStacks: { widePaddle: 1, slow: 2 },
+    bigBall: false,
   }, 0);
   assertFinite(stacked, 'stacked-skill');
   assert.ok(stacked.texts.includes('×1.4'));
@@ -209,6 +213,7 @@ test('技能格显示当前倍率，满级显示已满，无移动球显示无�
   drawSkillBar(full, layout, {
     balls: new Array(8).fill({ docked: false, kind: 'blue' }),
     skillStacks: { widePaddle: 3, slow: 5 },
+    bigBall: true,
   }, 0);
   assertFinite(full, 'full-skill');
   assert.equal(countText(full, '已满'), 4);

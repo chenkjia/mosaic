@@ -7,13 +7,21 @@ export function drawSkillIcon(ctx, skill, cx, cy, color) {
   ctx.strokeStyle = color;
   ctx.lineWidth = 2.4;
   ctx.lineCap = 'round';
-  if (skill === 'multiBall') {
-    const points = [[0, -9], [-10, 7], [10, 7]];
-    for (let i = 0; i < points.length; i += 1) {
-      ctx.beginPath();
-      ctx.arc(cx + points[i][0], cy + points[i][1], 5.4, 0, Math.PI * 2);
-      ctx.fill();
-    }
+  if (skill === 'bigBall') {
+    ctx.beginPath();
+    ctx.arc(cx, cy + 1, 11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.arc(cx, cy + 1, 16.5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    ctx.beginPath();
+    ctx.arc(cx - 3.6, cy - 3.2, 3.2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.72)';
+    ctx.fill();
   } else if (skill === 'widePaddle') {
     roundRectPath(ctx, cx - 17, cy - 4, 34, 9, 4.5);
     ctx.fill();
@@ -105,6 +113,7 @@ function drawMultiplier(ctx, rect, value) {
 }
 
 function slotState(sim, skill) {
+  if (skill === 'bigBall') return sim.bigBall ? 'full' : 'ready';
   if (skill === 'widePaddle') {
     return sim.skillStacks.widePaddle >= SKILL.wideMaxStacks ? 'full' : 'ready';
   }

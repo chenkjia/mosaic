@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   PALETTE, parseLevel, validateLevel, gridToBricks, quantizeGrid, countDestructible,
+  cellForGrid, BOARD,
 } from '../src/index.js';
 import { makeBrick, makeLevel } from './helpers.mjs';
 
@@ -10,6 +11,31 @@ test('合法关卡通过校验', () => {
   const result = validateLevel(level);
   assert.equal(result.ok, true, result.errors.join('; '));
   assert.equal(parseLevel(level).bricks.length, 3);
+});
+
+test('格子尺寸：满幅关卡保持 34px，小网格放大且挡板间距不小于 120px', () => {
+  assert.equal(cellForGrid(21, 28), BOARD.cell);
+  assert.equal(cellForGrid(21, 25), BOARD.cell);
+  assert.equal(cellForGrid(4, 3), 74.8);
+  const mid = cellForGrid(16, 12);
+  assert.ok(mid > BOARD.cell && mid < BOARD.cell * 2.2);
+  const parsed = parseLevel({
+    id: 9,
+    cols: 9,
+    rows: 8,
+    anchor: 'top',
+    bricks: [{ x: 0, y: 0 }],
+  });
+  assert.equal(parsed.cell, cellForGrid(9, 8));
+  assert.equal(parsed.anchor, 'top');
+  assert.equal(parsed.cell, 74.8);
+});
+
+test('cell 与网格不匹配时被拒绝', () => {
+  const level = makeLevel([makeBrick(1, 1)], { cols: 9, rows: 8, anchor: 'top', cell: 34 });
+  const result = validateLevel(level);
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some((error) => error.includes('cell')));
 });
 
 test('越界、重复、超色板、无破坏砖被拒绝', () => {
